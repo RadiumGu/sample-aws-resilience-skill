@@ -207,19 +207,24 @@ pandoc {报告文件}.md \
 
 如果用户选择需要混沌工程测试计划，按照 `references/assessment-output-spec.md` 规范生成结构化数据：
 
-**方式 1：嵌入模式（推荐）**
-在评估报告（Markdown 和 HTML）末尾添加 `## Chaos Engineering Ready Data` 附录章节，一份报告人机共读。
-
-**方式 2：独立文件模式**
+**方式 1：独立文件模式（推荐）**
 ```markdown
 文件名：{项目名称}-chaos-input-{日期}.md
 例如：ecommerce-chaos-input-2026-02-28.md
 
-内容：按照"混沌工程测试计划"部分的规范结构生成，
-包含：项目元数据、AWS 资源清单（含 ARN）、业务功能依赖链、
+内容：按照 assessment-output-spec.md / assessment-output-spec_zh.md 的规范结构生成，
+包含完整的 8 个结构化章节：项目元数据、AWS 资源清单（含 ARN）、业务功能依赖链、
 风险清单（含可实验性标记和建议注入方式）、风险详情、
-监控就绪度、韧性评分（9 维度）、约束和偏好、开放发现
+监控就绪度、韧性评分（9 维度）、约束和偏好
 ```
+
+主报告（Markdown 和 HTML）中**不要重复完整的混沌工程数据**，仅在适当位置添加简要引用：
+```markdown
+> 混沌工程测试计划详见独立文件：[{项目名称}-chaos-input-{日期}.md]({项目名称}-chaos-input-{日期}.md)
+```
+
+**方式 2：嵌入模式**（仅当用户明确要求时使用）
+在评估报告（Markdown 和 HTML）末尾添加 `## Chaos Engineering Ready Data` 附录章节，一份报告人机共读。
 
 **HTML 报告中的混沌工程数据**：
 当用户选择混沌工程测试计划时，HTML 报告中也应包含对应的可视化章节：
@@ -237,7 +242,7 @@ pandoc {报告文件}.md \
 {当前工作目录}/
 ├── {项目名称}-resilience-assessment-{日期}.md    (主报告 Markdown)
 ├── {项目名称}-resilience-assessment-{日期}.html   (主报告 HTML，含交互式图表)
-└── {项目名称}-chaos-input-{日期}.md              (混沌工程数据，独立文件模式时生成，可选)
+└── {项目名称}-chaos-input-{日期}.md              (混沌工程数据，独立文件，用户选择混沌工程时默认生成)
 ```
 
 ---

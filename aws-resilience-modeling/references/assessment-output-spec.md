@@ -4,10 +4,10 @@
 > The `aws-resilience-modeling` skill should organize report content according to this specification when generating resilience assessment reports, ensuring the chaos engineering phase can directly consume the data.
 >
 > **Two Output Methods (choose one)**:
-> 1. **Embedded Mode**: Add a `## Chaos Engineering Ready Data` appendix section at the end of the existing assessment report
-> 2. **Standalone File Mode**: Generate a separate `{project}-chaos-input-{date}.md`
+> 1. **Standalone File Mode (Recommended)**: Generate a separate `{project}-chaos-input-{date}.md`. The main report should only include a brief reference, without duplicating the full data.
+> 2. **Embedded Mode**: Add a `## Chaos Engineering Ready Data` appendix section at the end of the existing assessment report (only when user explicitly requests embedding)
 >
-> **Method 1 is recommended** (one report, readable by both humans and machines)
+> **Method 1 is recommended** (standalone file, easier for downstream `chaos-engineering-on-aws` skill to consume directly, and keeps the main report concise)
 >
 > **This specification defines structure (table headers + fields + enum values) and is not tied to any specific system.** Appendix A provides fill-in examples for different architecture patterns.
 

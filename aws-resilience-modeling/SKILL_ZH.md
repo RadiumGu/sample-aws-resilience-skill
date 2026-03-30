@@ -240,8 +240,8 @@
 > 该数据格式遵循 [assessment-output-spec_zh.md](references/assessment-output-spec_zh.md) 规范，供下游 `chaos-engineering-on-aws` skill 直接消费。
 
 **输出方式**（两种，默认推荐方式 1）：
-1. **嵌入模式（推荐）**：在评估报告末尾添加 `## Chaos Engineering Ready Data` 附录
-2. **独立文件模式**：单独生成 `{project}-chaos-input-{date}.md`
+1. **独立文件模式（推荐）**：单独生成 `{project}-chaos-input-{date}.md`，主报告中仅保留简要引用（如"详见 `{project}-chaos-input-{date}.md`"），不重复完整数据
+2. **嵌入模式**：在评估报告末尾添加 `## Chaos Engineering Ready Data` 附录（仅当用户明确要求嵌入时使用）
 
 **必须包含的 8 个结构化章节**（表头和字段名固定，详见 [assessment-output-spec_zh.md](references/assessment-output-spec_zh.md)）：
 

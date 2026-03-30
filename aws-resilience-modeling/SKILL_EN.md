@@ -241,8 +241,8 @@ Then include the following sections:
 > This data format follows the [assessment-output-spec.md](references/assessment-output-spec.md) specification, for direct consumption by the downstream `chaos-engineering-on-aws` skill.
 
 **Output Methods** (two options, Method 1 recommended by default):
-1. **Embedded Mode (Recommended)**: Add a `## Chaos Engineering Ready Data` appendix at the end of the assessment report
-2. **Standalone File Mode**: Generate a separate `{project}-chaos-input-{date}.md`
+1. **Standalone File Mode (Recommended)**: Generate a separate `{project}-chaos-input-{date}.md`. The main report should only include a brief reference (e.g., "See `{project}-chaos-input-{date}.md` for details"), without duplicating the full data.
+2. **Embedded Mode**: Add a `## Chaos Engineering Ready Data` appendix at the end of the assessment report (only when user explicitly requests embedding)
 
 **8 Required Structured Sections** (table headers and field names are fixed; see [assessment-output-spec.md](references/assessment-output-spec.md) for details):
 
