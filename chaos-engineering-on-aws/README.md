@@ -13,6 +13,7 @@ This skill enables you to systematically validate system resilience through cont
 - Completed assessment report from `aws-resilience-modeling` skill (recommended)
 - AWS credentials with FIS permissions
 - MCP servers configured (see below)
+- Prerequisites checklist completed (see [references/prerequisites-checklist.md](references/prerequisites-checklist.md))
 
 ## MCP Server Setup
 
@@ -120,8 +121,17 @@ Full setup guide: [MCP_SETUP_GUIDE.md](MCP_SETUP_GUIDE.md)
 
 ## Fault Injection Tools
 
+> 📋 Full structured catalog: [references/fault-catalog.yaml](references/fault-catalog.yaml)
+
 ```
-AWS Managed Services / Infrastructure  →  AWS FIS
+AZ/Region-level Compound Faults  →  FIS Scenario Library
+  ├── AZ Power Interruption (EC2 + RDS + EBS + ElastiCache)
+  ├── AZ Application Slowdown (network latency injection)
+  ├── Cross-AZ Traffic Slowdown (inter-AZ packet loss)
+  └── Cross-Region Connectivity (TGW + route table disruption)
+  ⚠️ Templates must be created via Console, not API
+
+AWS Managed Services / Infrastructure  →  AWS FIS (single action)
   ├── Node level:    eks:terminate-nodegroup-instances
   ├── Instance:      ec2:terminate/stop/reboot
   ├── Database:      rds:failover, rds:reboot
@@ -164,13 +174,22 @@ K8s Pod / Container Layer  →  Chaos Mesh (preferred)
 
 ```
 chaos-engineering-on-aws/
-├── SKILL.md                    # Agent skill definition
+├── SKILL.md                    # Agent skill definition (language router)
+├── SKILL_EN.md / SKILL_ZH.md  # Full instructions (EN/ZH)
 ├── README.md                   # This file (English)
 ├── README_zh.md                # Chinese version
 ├── MCP_SETUP_GUIDE.md          # MCP server setup
-├── doc/                        # Additional documentation
 ├── examples/                   # Experiment scenario examples
-├── references/                 # FIS actions, Chaos Mesh CRDs, templates
-├── scripts/                    # Monitoring scripts
+├── references/
+│   ├── fault-catalog.yaml      # Unified fault type registry (ChaosMesh + FIS + Scenarios)
+│   ├── scenario-library.md     # FIS Scenario Library templates & requirements
+│   ├── prerequisites-checklist.md  # Pre-flight checklist by architecture pattern
+│   ├── fis-actions.md          # FIS actions reference
+│   ├── chaosmesh-crds.md       # Chaos Mesh CRD reference
+│   ├── report-templates.md     # Report generation templates
+│   └── gameday.md              # Game Day exercise guide
+├── scripts/
+│   ├── monitor.sh              # Monitoring script template
+│   └── setup-prerequisites.sh  # Optional pre-flight setup script
 └── e2e-tests/                  # End-to-end tests
 ```

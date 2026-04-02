@@ -13,6 +13,7 @@ AI 驱动的混沌工程 Agent Skill，在 AWS 上运行受控混沌实验，覆
 - `aws-resilience-modeling` Skill 生成的评估报告（推荐）
 - 具备 FIS 权限的 AWS 凭证
 - 已配置 MCP Server（见下方）
+- 前置条件检查完成（见 [references/prerequisites-checklist_zh.md](references/prerequisites-checklist_zh.md)）
 
 ## MCP Server 配置
 
@@ -120,8 +121,17 @@ python server.py
 
 ## 故障注入工具选择
 
+> 📋 完整结构化目录：[references/fault-catalog.yaml](references/fault-catalog.yaml)
+
 ```
-AWS 托管服务 / 基础设施层  →  AWS FIS
+AZ/Region 级复合故障  →  FIS Scenario Library
+  ├── AZ 电源中断（EC2 + RDS + EBS + ElastiCache 联动）
+  ├── AZ 应用延迟（网络延迟注入）
+  ├── 跨 AZ 流量劣化（跨 AZ 丢包）
+  └── 跨 Region 连通性（TGW + 路由表中断）
+  ⚠️ 模板必须通过控制台创建，不能 API 生成
+
+AWS 托管服务 / 基础设施层  →  AWS FIS（单 action）
   ├── 节点级：   eks:terminate-nodegroup-instances
   ├── 实例级：   ec2:terminate/stop/reboot
   ├── 数据库级： rds:failover, rds:reboot
@@ -164,13 +174,22 @@ K8s Pod / 容器层  →  Chaos Mesh（推荐）
 
 ```
 chaos-engineering-on-aws/
-├── SKILL.md                    # Agent Skill 定义
+├── SKILL.md                    # Agent Skill 定义（语言路由）
+├── SKILL_EN.md / SKILL_ZH.md  # 完整指令（英文/中文）
 ├── README.md                   # 英文版
 ├── README_zh.md                # 本文件（中文版）
 ├── MCP_SETUP_GUIDE.md          # MCP Server 配置指南
-├── doc/                        # 补充文档
 ├── examples/                   # 实验场景示例
-├── references/                 # FIS actions、Chaos Mesh CRD、模板
-├── scripts/                    # 监控脚本
+├── references/
+│   ├── fault-catalog.yaml      # 统一故障类型注册表（ChaosMesh + FIS + Scenarios）
+│   ├── scenario-library_zh.md  # FIS Scenario Library 模板与要求
+│   ├── prerequisites-checklist_zh.md  # 按架构模式分类的前置条件
+│   ├── fis-actions_zh.md       # FIS actions 参考
+│   ├── chaosmesh-crds_zh.md    # Chaos Mesh CRD 参考
+│   ├── report-templates_zh.md  # 报告生成模板
+│   └── gameday_zh.md           # Game Day 演练指南
+├── scripts/
+│   ├── monitor.sh              # 监控脚本模板
+│   └── setup-prerequisites.sh  # 可选的前置环境准备脚本
 └── e2e-tests/                  # 端到端测试
 ```
