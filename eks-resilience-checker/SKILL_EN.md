@@ -38,8 +38,21 @@ aws eks update-kubeconfig --name {CLUSTER_NAME} --region {REGION}
 kubectl get nodes
 ```
 
+If the user already has a kubeconfig (e.g., provided by a cluster admin), they can use it directly:
+
+```bash
+# Point to an existing kubeconfig
+export KUBECONFIG=/path/to/admin-kubeconfig
+kubectl get nodes
+
+# Or specify per-command
+kubectl --kubeconfig /path/to/admin-kubeconfig get nodes
+```
+
+> **In Step 1**, ask the user: "Do you have an existing kubeconfig, or should I generate one with `aws eks update-kubeconfig`?"
+
 **Requirements:**
-- AWS CLI installed and configured with valid credentials
+- AWS CLI installed and configured with valid credentials (if generating kubeconfig)
 - IAM identity must have `eks:DescribeCluster` permission
 - IAM identity must be mapped in the cluster's access configuration (EKS Access Entries or `aws-auth` ConfigMap)
 

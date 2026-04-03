@@ -48,8 +48,21 @@ aws eks update-kubeconfig --name {CLUSTER_NAME} --region {REGION}
 kubectl get nodes
 ```
 
+如果用户已有现成的 kubeconfig（例如集群管理员提供的），可以直接使用：
+
+```bash
+# 指向已有的 kubeconfig
+export KUBECONFIG=/path/to/admin-kubeconfig
+kubectl get nodes
+
+# 或者按命令指定
+kubectl --kubeconfig /path/to/admin-kubeconfig get nodes
+```
+
+> **在步骤 1 中**，询问用户："你有现成的 kubeconfig 吗？还是需要我用 `aws eks update-kubeconfig` 生成一个？"
+
 **前提**：
-- AWS CLI 已安装并配置有效凭证
+- AWS CLI 已安装并配置有效凭证（如需生成 kubeconfig）
 - IAM 身份需有 `eks:DescribeCluster` 权限
 - IAM 身份需在集群访问配置中映射（EKS Access Entries 或 `aws-auth` ConfigMap）
 
