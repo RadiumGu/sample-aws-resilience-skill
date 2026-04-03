@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# EKS Resilience Assessment — 28 best-practice checks
+# EKS Resilience Assessment — 26 best-practice checks
 # Outputs: assessment.json, assessment-report.md, assessment-report.html, remediation-commands.sh
 
 ###############################################################################
@@ -14,6 +14,8 @@ OUTPUT_DIR="./output"
 SKIP_NS_REGEX="^(kube-system|kube-public|kube-node-lease)$"
 RESULTS=()
 TOTAL=0; PASS=0; FAIL=0; INFO=0
+K8S_VERSION=""
+PLATFORM_VERSION=""
 
 ###############################################################################
 # Helpers
@@ -52,6 +54,13 @@ discover_cluster() {
     [[ -n "$REGION" ]] || REGION="ap-northeast-1"
     log "Using region: $REGION"
   fi
+
+  # Capture Kubernetes and platform versions
+  local cluster_desc
+  cluster_desc=$(aws eks describe-cluster --name "$CLUSTER_NAME" --region "$REGION" --output json 2>/dev/null || echo '{}')
+  K8S_VERSION=$(echo "$cluster_desc" | jq -r '.cluster.version // "unknown"')
+  PLATFORM_VERSION=$(echo "$cluster_desc" | jq -r '.cluster.platformVersion // "unknown"')
+  log "Kubernetes version: $K8S_VERSION, Platform version: $PLATFORM_VERSION"
 }
 
 get_namespaces() {
@@ -571,16 +580,99 @@ check_d7() {
 # Output
 ###############################################################################
 
+generate_experiment_recommendations() {
+  # Mapping: check_id -> fault_type|priority|backend|hypothesis
+  declare -A EXP_MAP
+  EXP_MAP["A1"]="pod_kill|P0|chaosmesh|Killing an unmanaged pod will cause permanent loss until manual restart"
+  EXP_MAP["A2"]="pod_kill|P0|chaosmesh|Killing the single-replica pod will cause service unavailability until K8s recreates the pod (~30-60s)"
+  EXP_MAP["A3"]="fis_eks_terminate_node|P1|fis|Terminating a node may kill all replicas if co-located on same node"
+  EXP_MAP["A4"]="pod_cpu_stress|P1|chaosmesh|A hung process won't be detected or restarted without liveness probe"
+  EXP_MAP["A5"]="network_delay|P1|chaosmesh|Traffic continues routing to unhealthy pods without readiness probe"
+  EXP_MAP["A6"]="fis_eks_terminate_node|P1|fis|Node drain may evict all replicas simultaneously without PDB"
+  EXP_MAP["A8"]="pod_cpu_stress|P2|chaosmesh|Under load, workload cannot scale out automatically without HPA"
+  EXP_MAP["D1"]="fis_ssm_cpu_stress|P1|fis|Resource exhaustion prevents new pod scheduling without node autoscaler"
+  EXP_MAP["D2"]="fis_network_disrupt|P0|fis|Single AZ failure causes complete cluster unavailability"
+  EXP_MAP["D3"]="pod_memory_stress|P1|chaosmesh|One container can consume all node memory (noisy neighbor) without limits"
+
+  local recs="["
+  local first=1
+
+  for r in "${RESULTS[@]}"; do
+    local check_id check_status
+    check_id=$(echo "$r" | jq -r '.id')
+    check_status=$(echo "$r" | jq -r '.status')
+    [[ "$check_status" != "FAIL" ]] && continue
+    [[ -z "${EXP_MAP[$check_id]+x}" ]] && continue
+
+    local mapping="${EXP_MAP[$check_id]}"
+    local fault_type priority backend hypothesis
+    IFS='|' read -r fault_type priority backend hypothesis <<< "$mapping"
+
+    # Extract target resources (first 5, formatted as namespace/name)
+    local targets
+    targets=$(echo "$r" | jq -c '[.resources_affected[:5] | .[] | if type=="object" then ((.namespace // "") + "/" + (.name // "")) else . end]')
+
+    local rec
+    rec=$(jq -nc \
+      --arg cid "$check_id" \
+      --arg ft "$fault_type" \
+      --arg be "$backend" \
+      --arg pr "$priority" \
+      --argjson tgt "$targets" \
+      --arg hyp "$hypothesis" \
+      '{priority:$pr, check_id:$cid, target_resources:$tgt, suggested_fault_type:$ft, suggested_backend:$be, hypothesis:$hyp}')
+
+    [[ $first -eq 0 ]] && recs+=","
+    recs+="$rec"
+    first=0
+  done
+  recs+="]"
+  EXPERIMENT_RECS="$recs"
+  log "Generated $(echo "$recs" | jq 'length') experiment recommendations"
+}
+
 write_json() {
   local out="$OUTPUT_DIR/assessment.json"
   local ts
   ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+  # Count critical failures (severity=critical AND status=FAIL)
+  local critical_failures=0
+  for r in "${RESULTS[@]}"; do
+    local sev st
+    sev=$(echo "$r" | jq -r '.severity')
+    st=$(echo "$r" | jq -r '.status')
+    [[ "$sev" == "critical" && "$st" == "FAIL" ]] && critical_failures=$((critical_failures + 1))
+  done
+
+  # Compliance score: info-severity FAILs don't count against score
+  local info_fails=0
+  for r in "${RESULTS[@]}"; do
+    local sev st
+    sev=$(echo "$r" | jq -r '.severity')
+    st=$(echo "$r" | jq -r '.status')
+    [[ "$sev" == "info" && "$st" == "FAIL" ]] && info_fails=$((info_fails + 1))
+  done
+  local score_denominator=$((TOTAL - info_fails))
+  local compliance_score="0.0"
+  if [[ $score_denominator -gt 0 ]]; then
+    compliance_score=$(awk "BEGIN {printf \"%.1f\", ($PASS / $score_denominator) * 100}")
+  fi
+
+  # Build target_namespaces JSON array
+  local ns_json
+  ns_json=$(printf '%s\n' "${FILTERED_NS[@]}" | jq -R . | jq -sc '.')
+
   {
     echo "{"
-    echo "  \"cluster\": \"$CLUSTER_NAME\","
+    echo "  \"schema_version\": \"1.0\","
+    echo "  \"cluster_name\": \"$CLUSTER_NAME\","
     echo "  \"region\": \"$REGION\","
+    echo "  \"kubernetes_version\": \"$K8S_VERSION\","
+    echo "  \"platform_version\": \"$PLATFORM_VERSION\","
     echo "  \"timestamp\": \"$ts\","
-    echo "  \"summary\": {\"total\": $TOTAL, \"pass\": $PASS, \"fail\": $FAIL, \"info\": $INFO},"
+    echo "  \"target_namespaces\": $ns_json,"
+    echo "  \"summary\": {\"total_checks\": $TOTAL, \"passed\": $PASS, \"failed\": $FAIL, \"info\": $INFO, \"critical_failures\": $critical_failures, \"compliance_score\": $compliance_score},"
     echo "  \"checks\": ["
     local first=1
     for r in "${RESULTS[@]}"; do
@@ -589,7 +681,8 @@ write_json() {
       first=0
     done
     echo ""
-    echo "  ]"
+    echo "  ],"
+    echo "  \"experiment_recommendations\": ${EXPERIMENT_RECS:-[]}"
     echo "}"
   } | jq '.' > "$out"
   log "Wrote $out"
@@ -738,7 +831,14 @@ EOF
 <div class="check"><div class="check-header"><span class="badge ${badge_class}">${rs}</span><strong>${ri}: ${rn}</strong><span class="sev">${rv}</span></div>
 <ul class="findings">
 EOF
-      echo "$r" | jq -r '.findings | if type=="array" then .[] | if type=="string" then . else tostring end else tostring end' | while IFS= read -r line; do
+      echo "$r" | jq -r '.findings | if type=="array" then .[] |
+        if type=="string" then .
+        elif .containers_missing_probe then "\(.namespace)/\(.name): missing in [\(.containers_missing_probe | join(", "))]"
+        elif .containers_missing_hook then "\(.namespace)/\(.name): missing in [\(.containers_missing_hook | join(", "))]"
+        elif .containers_missing_resources then "\(.namespace)/\(.name): missing in [\(.containers_missing_resources | map(.name) | join(", "))]"
+        elif (.namespace and .name) then "\(.namespace)/\(.name)" + (if .kind then " (\(.kind)" + (if .replicas then ", replicas=\(.replicas)" else "" end) + ")" else "" end)
+        else tostring end
+      else tostring end' | while IFS= read -r line; do
         echo "<li>${line}</li>" >> "$out"
       done
       cat >> "$out" <<EOF
@@ -1068,6 +1168,7 @@ main() {
   check_d1; check_d2; check_d3; check_d4; check_d5
   check_d6; check_d7
 
+  generate_experiment_recommendations
   write_json
   write_report
   generate_html_report
