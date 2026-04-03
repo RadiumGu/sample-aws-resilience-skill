@@ -45,19 +45,38 @@ check_deps() {
 
 discover_cluster() {
   if [[ -z "$CLUSTER_NAME" ]]; then
-    CLUSTER_NAME=$(kubectl config current-context 2>/dev/null | sed 's|.*:cluster/||' || true)
+    local ctx
+    ctx=$(kubectl config current-context 2>/dev/null || true)
+    if [[ "$ctx" == *":cluster/"* ]]; then
+      # ARN format: arn:aws:eks:REGION:ACCOUNT:cluster/NAME
+      CLUSTER_NAME="${ctx##*:cluster/}"
+    elif [[ -n "$ctx" ]]; then
+      # Non-ARN context — try using it as cluster name, validate with EKS API later
+      CLUSTER_NAME="$ctx"
+    fi
     [[ -n "$CLUSTER_NAME" ]] || die "Cannot auto-detect cluster name. Use --cluster."
     log "Auto-detected cluster: $CLUSTER_NAME"
   fi
   if [[ -z "$REGION" ]]; then
     REGION=$(aws configure get region 2>/dev/null || echo "")
-    [[ -n "$REGION" ]] || REGION="ap-northeast-1"
+    if [[ -z "$REGION" ]]; then
+      # Try to extract region from current kubectl context ARN
+      local ctx
+      ctx=$(kubectl config current-context 2>/dev/null || true)
+      if [[ "$ctx" == arn:*:eks:* ]]; then
+        REGION=$(echo "$ctx" | cut -d: -f4)
+      fi
+    fi
+    [[ -n "$REGION" ]] || die "Cannot auto-detect region. Use --region or set AWS_DEFAULT_REGION."
     log "Using region: $REGION"
   fi
 
   # Capture Kubernetes and platform versions
   local cluster_desc
   cluster_desc=$(aws eks describe-cluster --name "$CLUSTER_NAME" --region "$REGION" --output json 2>/dev/null || echo '{}')
+  if [[ "$cluster_desc" == '{}' || "$(echo "$cluster_desc" | jq -r '.cluster.name // ""')" == "" ]]; then
+    log "WARN: aws eks describe-cluster failed for $CLUSTER_NAME in $REGION — version/platform info unavailable"
+  fi
   K8S_VERSION=$(echo "$cluster_desc" | jq -r '.cluster.version // "unknown"')
   PLATFORM_VERSION=$(echo "$cluster_desc" | jq -r '.cluster.platformVersion // "unknown"')
   log "Kubernetes version: $K8S_VERSION, Platform version: $PLATFORM_VERSION"
