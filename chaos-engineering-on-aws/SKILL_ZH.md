@@ -14,12 +14,42 @@
 
 ## 前置输入
 
-### 输入方式（M1 支持两种）
+### 输入方式（M1 支持三种）
 
 1. **方式 1**：指定 Assessment 报告文件路径 → 解析 Markdown 结构化章节
 2. **方式 2**：指定独立 chaos-input 文件 → 解析 `{project}-chaos-input-{date}.md`
+3. **方式 3**：指定 `eks-resilience-checker` 的 assessment.json → 解析 K8s 韧性检查结果
 
 如用户无报告 → 引导先运行 `aws-resilience-modeling` Skill。
+如用户需要 EKS 层面韧性检查 → 引导先运行 `eks-resilience-checker` Skill。
+
+#### 方式 3：eks-resilience-checker 集成
+
+当用户提供 `eks-resilience-checker` 的 `assessment.json` 时：
+
+1. 读取 `experiment_recommendations` 数组
+2. 按 `priority` 排序（P0 → P1 → P2）
+3. 每个推荐包含：
+   - `suggested_fault_type` — 对应 `fault-catalog.yaml` 类型（如 `pod_kill`、`network_delay`）
+   - `target_resources` — 检查未通过的具体 K8s 资源
+   - `hypothesis` — 待验证的假设
+4. 如果同时提供了方式 1 或 2，合并去重实验目标
+5. 展示合并后的列表供用户确认
+
+示例：
+```json
+{
+  "experiment_recommendations": [
+    {
+      "check_id": "A1",
+      "suggested_fault_type": "pod_kill",
+      "priority": "P0",
+      "target_resources": ["petsite/payforadoption-singleton"],
+      "hypothesis": "杀死 singleton pod 导致服务永久不可用"
+    }
+  ]
+}
+```
 
 ### 输入完整性检查
 

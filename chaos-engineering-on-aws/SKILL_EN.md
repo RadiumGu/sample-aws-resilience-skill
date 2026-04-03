@@ -14,12 +14,42 @@ Default to Sonnet when not specified.
 
 ## Prerequisites
 
-### Input Methods (M1 supports two)
+### Input Methods (M1 supports three)
 
 1. **Method 1**: Specify Assessment report file path → Parse Markdown structured sections
 2. **Method 2**: Specify standalone chaos-input file → Parse `{project}-chaos-input-{date}.md`
+3. **Method 3**: Specify `eks-resilience-checker` assessment.json → Parse K8s resilience check results
 
 If the user has no report → Guide them to run `aws-resilience-modeling` Skill first.
+If the user wants EKS-specific resilience checks → Guide them to run `eks-resilience-checker` Skill first.
+
+#### Method 3: eks-resilience-checker Integration
+
+When the user provides an `assessment.json` from `eks-resilience-checker`:
+
+1. Read the `experiment_recommendations` array
+2. Sort by `priority` (P0 → P1 → P2)
+3. Each recommendation contains:
+   - `suggested_fault_type` — maps to `fault-catalog.yaml` types (e.g., `pod_kill`, `network_delay`)
+   - `target_resources` — specific K8s resources that failed the check
+   - `hypothesis` — what to verify
+4. If Method 1 or 2 is also provided, merge and deduplicate experiment targets
+5. Present combined list to user for confirmation
+
+Example:
+```json
+{
+  "experiment_recommendations": [
+    {
+      "check_id": "A1",
+      "suggested_fault_type": "pod_kill",
+      "priority": "P0",
+      "target_resources": ["petsite/payforadoption-singleton"],
+      "hypothesis": "Killing singleton pod causes permanent service loss"
+    }
+  ]
+}
+```
 
 ### Input Completeness Check
 

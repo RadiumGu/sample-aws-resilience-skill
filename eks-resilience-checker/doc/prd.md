@@ -6,7 +6,8 @@
 **状态**: Draft  
 **仓库**: `sample-aws-resilience-skill/eks-resilience-checker`  
 **变更**: v0.2 — 日志分析移至 chaos-engineering-on-aws；聚焦 28 项评估；assessment.json → chaos skill 集成接口  
-**变更**: v0.3 — 新增分发安装方式（`npx skills add`）；更新 Lifecycle 图加入第四个 Skill
+**变更**: v0.3 — 新增分发安装方式（`npx skills add`）；更新 Lifecycle 图加入第四个 Skill  
+**变更**: v0.4 — Section 10 改为"从未合并 PR 借鉴的内容"，去掉 MCP Server 方案，聚焦 Skill 本身
 
 ---
 
@@ -284,7 +285,60 @@ chaos-engineering-on-aws Step 6 (改造后):
 
 当 MCP 不可用时，回退到 `kubectl` + `aws` CLI 直接调用。
 
-### 4.2 执行流程
+### 4.2 EKS 认证方式
+
+支持三种 kubectl → EKS 集群的认证路径：
+
+| 方式 | 命令 | 适用场景 | 运行时依赖 |
+|------|------|---------|-----------|
+| **已有 kubeconfig** | `export KUBECONFIG=/path/to/admin-kubeconfig` | 集群管理员已提供 kubeconfig | 无额外依赖 |
+| **IAM kubeconfig** | `aws eks update-kubeconfig --name {CLUSTER} --region {REGION}` | 标准 EKS 开发环境 | AWS CLI + IAM 凭证 |
+| **ServiceAccount Token** | 创建只读 SA → 生成自包含 kubeconfig | CI/CD 流水线、受限环境 | 无（首次设置需管理员） |
+
+#### 已有 kubeconfig（最常用）
+
+```bash
+# 直接使用管理员提供的 kubeconfig
+export KUBECONFIG=/path/to/admin-kubeconfig
+kubectl get nodes
+```
+
+#### IAM kubeconfig
+
+```bash
+aws eks update-kubeconfig --name {CLUSTER_NAME} --region {REGION}
+```
+每次 kubectl 请求时自动通过 `aws eks get-token` 获取短期令牌。要求 IAM 身份在集群中有映射（EKS Access Entries 或 `aws-auth` ConfigMap）。
+
+#### ServiceAccount Token（受限环境）
+
+```bash
+# 创建只读 ServiceAccount
+kubectl create serviceaccount eks-resilience-checker -n kube-system
+kubectl create clusterrolebinding eks-resilience-checker-readonly \
+  --clusterrole=view \
+  --serviceaccount=kube-system:eks-resilience-checker
+
+# 生成令牌（有效期 1 年）
+TOKEN=$(kubectl create token eks-resilience-checker -n kube-system --duration=8760h)
+
+# 生成自包含 kubeconfig（无需 AWS CLI 即可使用）
+ENDPOINT=$(aws eks describe-cluster --name {CLUSTER_NAME} --query 'cluster.endpoint' --output text)
+CA_DATA=$(aws eks describe-cluster --name {CLUSTER_NAME} --query 'cluster.certificateAuthority.data' --output text)
+kubectl config set-cluster eks-check --server=$ENDPOINT --certificate-authority-data=$CA_DATA --embed-certs=true --kubeconfig=./eks-resilience-kubeconfig
+kubectl config set-credentials eks-checker --token=$TOKEN --kubeconfig=./eks-resilience-kubeconfig
+kubectl config set-context eks-check --cluster=eks-check --user=eks-checker --kubeconfig=./eks-resilience-kubeconfig
+kubectl config use-context eks-check --kubeconfig=./eks-resilience-kubeconfig
+```
+
+**运行时零 AWS 依赖**，只需 `kubectl` + 这个 kubeconfig 文件。适合 CI/CD 定期扫描。
+使用 `view` ClusterRole（只读），符合本 Skill 纯只读评估的安全原则。
+
+> **Skill 执行时**：Step 1 应先询问用户 "你有现成的 kubeconfig 吗？还是需要生成一个？"
+
+参考来源：[RadiumGu/Chaosmesh-MCP](https://github.com/RadiumGu/Chaosmesh-MCP) EKS Authentication Methods
+
+### 4.3 执行流程
 
 ```
 Step 1: 集群发现
@@ -314,7 +368,7 @@ Step 4: 实验推荐（可选）
 - Step 3: 查看报告，选择是否生成修复脚本
 - Step 4: 确认是否继续混沌实验（如果是 → 引导用户用 chaos-engineering-on-aws）
 
-### 4.3 Skill 文件结构
+### 4.4 Skill 文件结构
 
 ```
 eks-resilience-checker/
@@ -540,3 +594,52 @@ cp -r sample-aws-resilience-skill/eks-resilience-checker ~/.claude/skills/
 | AWS EKS Best Practices | `aws.github.io/aws-eks-best-practices` | 检查项理论依据 |
 | vercel-labs/skills CLI | `github.com/vercel-labs/skills` | `npx skills add` 分发机制 |
 | skills.sh | `skills.sh` | Skill 发现和注册平台 |
+
+---
+
+## 10. 从未合并 EKS MCP Server PR 借鉴的内容
+
+### 10.1 背景
+
+`awslabs/eks-mcp-server` 有一个未被官方接受的 PR，实现了 `check_eks_resiliency` 功能——完整的 28 项韧性检查 Python 实现（6069 行）。虽然不会作为 MCP Server 发布，但其中有大量可借鉴的内容来完善本 Skill。
+
+源码位置：`/home/ubuntu/tech/blog/g3-skill/eks-resilience-checker/src/eks-mcp-server/`
+
+### 10.2 已借鉴内容
+
+| 借鉴内容 | 用在哪里 | 说明 |
+|----------|---------|------|
+| 28 项检查的判定逻辑和边界处理 | `scripts/assess.sh` + SKILL 指令 Step 2 | Python 源码中对 CRD 不存在、API 版本差异等场景的处理方式，转化为 bash 脚本中的 error handling |
+| remediation 文本 + YAML 示例 | `references/remediation-templates.md` | PR 中每项检查都有详细修复步骤和完整 YAML 示例，比初始版本更具体 |
+| `eks-resiliency-checks.md` 的 "Why it matters" 说明 | `references/eks-resiliency-checks-mcp.md` | 直接复制作为补充参考文档，Agent 可据此向用户解释检查的业务价值 |
+| A9 Custom Metrics 多路径检查 | `references/check-commands.md` A9 | PR 同时查 KEDA CRD + Prometheus Adapter + metrics.k8s.io API 三条路径，我们的检查命令也覆盖了这三条 |
+| 测试用例中的 PASS/FAIL 场景 | `examples/petsite-assessment.md` | 参考测试用例设计示例报告中的 findings |
+
+### 10.3 未采用的部分
+
+| 内容 | 为什么不用 |
+|------|-----------|
+| 独立 MCP Server 打包 | 本项目目标是 Agent Skill，不是 MCP Server。Agent 通过 SKILL 指令 + assess.sh + kubectl 命令完成检查 |
+| K8s Python SDK 调用方式 | Skill 的执行路径是 Agent 调用 kubectl/aws CLI，不是 Python API |
+| `ResiliencyCheckResponse` 数据模型 | 我们用 assessment.json 自己的结构（含 `experiment_recommendations`，对齐 chaos skill）|
+
+### 10.4 执行路径（两层）
+
+```
+用户触发 "EKS 韧性评估"
+       │
+       ▼
+┌─ Path A: assess.sh 脚本（有 bash 环境时）────────────────────┐
+│  Agent 调用 scripts/assess.sh --cluster <name>                │
+│  纯 bash + kubectl + aws CLI + jq                             │
+│  输出 assessment.json + assessment-report.md                  │
+│  优点：一键完成，结构化输出，可重复                           │
+└───────────────────────────────────────────────────────────────┘
+       │ 如果 assess.sh 不适用（如 Windows 等）
+       ▼
+┌─ Path B: Agent 直接执行命令（默认路径）──────────────────────┐
+│  Agent 按 SKILL_EN/ZH.md 的 Step 2 逐条执行 kubectl 命令     │
+│  参考 references/check-commands.md                            │
+│  优点：Agent 可根据上下文跳过不适用检查，灵活性最高           │
+└───────────────────────────────────────────────────────────────┘
+```
