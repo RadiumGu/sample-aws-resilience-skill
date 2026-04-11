@@ -32,26 +32,31 @@ Based on the following industry-leading methodologies:
 
 > `awslabs.core-mcp-server` is deprecated. Please configure standalone MCP Servers directly.
 
-This Skill recommends using AWS official standalone MCP servers for automated resource scanning and analysis.
+This Skill **must** use AWS official standalone MCP servers for automated resource scanning and analysis.
+
+> **Security Constraint**:
+> 1. All MCP servers operate in **read-only mode**, executing only Describe/Get/List operations. They will **NOT modify any AWS resources**
+> 2. **Do NOT** use the Bash tool to directly execute `aws` CLI commands to access AWS resources (including scanning, querying, modifying, or any other operations) — all AWS resource access must go through the MCP servers listed below
+> 3. The only `aws` CLI commands permitted in Bash are `aws sts get-caller-identity` (credential verification) and `aws configure list` (view configuration)
 
 **Required (Core Capabilities)**:
 
-| MCP Server | Purpose |
-|-----------|---------|
-| **aws-api-mcp-server** | General AWS API access (Describe/List operations for EC2, RDS, ELB, S3, Lambda, etc.) |
-| **cloudwatch-mcp-server** | Metrics reading, alarm queries, log analysis |
+| MCP Server | Purpose | Allowed Operations |
+|-----------|---------|-------------------|
+| **aws-api-mcp-server** | General AWS API access (EC2, RDS, ELB, S3, Lambda, etc.) | Describe/Get/List only (read-only) |
+| **cloudwatch-mcp-server** | Metrics reading, alarm queries, log analysis | Describe/Get/List only (read-only) |
 
 **Optional (Architecture-dependent)**:
 
-| MCP Server | Use Case |
-|-----------|----------|
-| **eks-mcp-server** | For EKS: cluster management, K8s resources, Pod logs |
-| **ecs-mcp-server** | For ECS: service/task management |
-| **dynamodb-mcp-server** | For DynamoDB: table operations and queries |
-| **lambda-tool-mcp-server** | For Lambda: function operations |
-| **elasticache-mcp-server** | For ElastiCache: cluster management |
-| **iam-mcp-server** | IAM policy and role auditing |
-| **cloudtrail-mcp-server** | Audit log queries |
+| MCP Server | Use Case | Allowed Operations |
+|-----------|----------|-------------------|
+| **eks-mcp-server** | For EKS: cluster management, K8s resources, Pod logs | Describe/List only (read-only) |
+| **ecs-mcp-server** | For ECS: service/task management | Describe/List only (read-only) |
+| **dynamodb-mcp-server** | For DynamoDB: table operations and queries | Describe/List/Query only (read-only) |
+| **lambda-tool-mcp-server** | For Lambda: function operations | List/Get only (read-only) |
+| **elasticache-mcp-server** | For ElastiCache: cluster management | Describe/List only (read-only) |
+| **iam-mcp-server** | IAM policy and role auditing | List/Get only (read-only) |
+| **cloudtrail-mcp-server** | Audit log queries | Query events only (read-only) |
 
 If MCP is not configured, the Skill will automatically fall back to analyzing IaC code, architecture documentation, or interactive Q&A.
 See [MCP_SETUP_GUIDE.md](references/MCP_SETUP_GUIDE.md) for detailed configuration instructions.
@@ -60,9 +65,19 @@ See [MCP_SETUP_GUIDE.md](references/MCP_SETUP_GUIDE.md) for detailed configurati
 
 ## Analysis Workflow
 
-### Pre-requisite: MCP Environment Detection
+### Step 1: Determine Information Source
 
-Before starting the analysis, you **must** first check the current MCP server configuration:
+First, ask the user how environment information will be provided:
+
+1. **Document/Code Mode**: User has architecture documents, IaC code (Terraform/CloudFormation), or architecture diagrams ready → **No MCP needed, proceed directly to information collection**
+2. **MCP Scan Mode**: Need to automatically scan the AWS environment for real-time resource configuration → **Must complete MCP environment detection first** (see below)
+3. **Hybrid Mode**: Some information from documents, some needs to be supplemented by scanning → **Complete MCP environment detection first, then combine with document analysis**
+
+### Step 2: MCP Environment Detection (Only Required for Scan Mode)
+
+> **Only execute this step when the user chooses MCP Scan Mode or Hybrid Mode. If the user provides documents/code, skip this step and proceed directly to information collection.**
+
+Check the current MCP server configuration status:
 
 1. **Detect installed MCPs**: Use `/mcp` or `claude mcp list` to view currently configured MCP servers
 2. **Compare with required MCPs**: Check the installed list against the required servers listed in "MCP Server Requirements" above (`aws-api-mcp-server`, `cloudwatch-mcp-server`)
@@ -77,13 +92,13 @@ Before starting the analysis, you **must** first check the current MCP server co
 
 ---
 
-### Information Collection
+### Step 3: Information Collection
 
-Before starting the analysis, ask the user the following key information:
+Ask the user the following key information:
 
-1. **Environment Information Collection**:
-   - Has the user prepared an environment description document?
-   - Should MCP servers be used to automatically scan the AWS environment? (Confirm MCPs were configured in the pre-requisite step)
+1. **Environment Information Collection** (if not already determined in Step 1):
+   - Has the user prepared an environment description document or IaC code?
+   - Should MCP servers be used to automatically scan the AWS environment? (Confirm MCPs were configured in Step 2)
    - Is access to the AWS Management Console available?
 
 2. **Business Context**:
@@ -115,7 +130,7 @@ Before starting the analysis, ask the user the following key information:
 
 ### Task 1: System Component Mapping and Dependency Analysis
 
-**Tools Used**: AWS CLI or AWS API (if available), Mermaid diagrams
+**Tools Used**: Read-only API calls via MCP servers (`aws-api-mcp-server`) if available, Mermaid diagrams. Do not use Bash to execute any `aws` CLI commands to access AWS resources.
 
 **Output**:
 1. **System Architecture Overview** (Mermaid, showing Region/AZ/component hierarchy)

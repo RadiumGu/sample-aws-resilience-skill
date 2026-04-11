@@ -419,11 +419,12 @@ aws sts get-caller-identity
 
 ### 无 MCP 降级
 
-如果 MCP Server 未配置或不可用，Skill 自动降级为以下备用方式：
+如果 MCP Server 未配置或不可用，Skill 自动降级为以下备用方式（**不会直接扫描 AWS 资源**）：
 - 分析 IaC 代码（Terraform/CloudFormation）
 - 分析架构文档
 - 交互式问答
-- 直接使用 AWS CLI 命令
+
+> **注意**：降级模式下**不允许**通过 Bash 直接执行 `aws` CLI 命令扫描或操作 AWS 资源。所有 AWS 资源访问必须通过 MCP 服务器。
 
 ---
 

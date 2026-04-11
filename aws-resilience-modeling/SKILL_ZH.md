@@ -31,26 +31,31 @@
 
 > `awslabs.core-mcp-server` 已废弃。请直接配置独立 MCP Server。
 
-本 Skill 推荐使用 AWS 官方独立 MCP 服务器实现自动化资源扫描和分析。
+本 Skill **必须**使用 AWS 官方独立 MCP 服务器实现自动化资源扫描和分析。
+
+> **安全约束**：
+> 1. 所有 MCP 服务器均以**只读模式**运行，仅执行 Describe/Get/List 操作，**不会对 AWS 资源进行任何修改**
+> 2. **禁止**通过 Bash 工具直接执行 `aws` CLI 命令访问 AWS 资源（包括扫描、查询、修改等任何操作）——所有 AWS 资源访问必须通过以下 MCP 服务器
+> 3. Bash 中仅允许执行 `aws sts get-caller-identity`（验证凭证）和 `aws configure list`（查看配置）
 
 **必需（核心能力）**：
 
-| MCP Server | 用途 |
-|-----------|------|
-| **aws-api-mcp-server** | 通用 AWS API 访问（EC2、RDS、ELB、S3、Lambda 等资源的 Describe/List 操作） |
-| **cloudwatch-mcp-server** | 指标读取、告警查询、日志分析 |
+| MCP Server | 用途 | 允许的操作 |
+|-----------|------|-----------|
+| **aws-api-mcp-server** | 通用 AWS API 访问（EC2、RDS、ELB、S3、Lambda 等） | 仅 Describe/Get/List（只读） |
+| **cloudwatch-mcp-server** | 指标读取、告警查询、日志分析 | 仅 Describe/Get/List（只读） |
 
 **按需（根据架构选配）**：
 
-| MCP Server | 适用场景 |
-|-----------|---------|
-| **eks-mcp-server** | 使用 EKS 时：集群管理、K8s 资源、Pod 日志 |
-| **ecs-mcp-server** | 使用 ECS 时：服务/任务管理 |
-| **dynamodb-mcp-server** | 使用 DynamoDB 时：表操作和查询 |
-| **lambda-tool-mcp-server** | 使用 Lambda 时：函数操作 |
-| **elasticache-mcp-server** | 使用 ElastiCache 时：集群管理 |
-| **iam-mcp-server** | IAM 策略和角色审计 |
-| **cloudtrail-mcp-server** | 审计日志查询 |
+| MCP Server | 适用场景 | 允许的操作 |
+|-----------|---------|-----------|
+| **eks-mcp-server** | 使用 EKS 时：集群管理、K8s 资源、Pod 日志 | 仅 Describe/List（只读） |
+| **ecs-mcp-server** | 使用 ECS 时：服务/任务管理 | 仅 Describe/List（只读） |
+| **dynamodb-mcp-server** | 使用 DynamoDB 时：表操作和查询 | 仅 Describe/List/Query（只读） |
+| **lambda-tool-mcp-server** | 使用 Lambda 时：函数操作 | 仅 List/Get（只读） |
+| **elasticache-mcp-server** | 使用 ElastiCache 时：集群管理 | 仅 Describe/List（只读） |
+| **iam-mcp-server** | IAM 策略和角色审计 | 仅 List/Get（只读） |
+| **cloudtrail-mcp-server** | 审计日志查询 | 仅查询事件（只读） |
 
 如果 MCP 未配置，Skill 将自动切换到分析 IaC 代码、架构文档或交互式问答。
 详细配置指南参见 [MCP_SETUP_GUIDE_zh.md](references/MCP_SETUP_GUIDE_zh.md)。
@@ -59,9 +64,19 @@
 
 ## 分析流程
 
-### 前置步骤：MCP 环境检测
+### 第一步：确定信息来源
 
-在开始分析前，**必须**先检测当前 MCP 服务器配置状态：
+首先询问用户环境信息的来源方式：
+
+1. **文档/代码模式**：用户已准备好架构文档、IaC 代码（Terraform/CloudFormation）、或架构图 → **无需 MCP，直接进入信息收集**
+2. **MCP 扫描模式**：需要自动扫描 AWS 环境获取实时资源配置 → **必须先完成 MCP 环境检测**（见下方）
+3. **混合模式**：部分信息来自文档，部分需要扫描补充 → **先完成 MCP 环境检测，再结合文档分析**
+
+### 第二步：MCP 环境检测（仅扫描模式需要）
+
+> **仅当用户选择 MCP 扫描模式或混合模式时执行此步骤。如果用户提供了文档/代码，可跳过此步直接进入信息收集。**
+
+检测当前 MCP 服务器配置状态：
 
 1. **检测已安装的 MCP**：使用 `/mcp` 或 `claude mcp list` 查看当前已配置的 MCP 服务器列表
 2. **对比必需 MCP**：将已安装列表与上方"MCP 服务器要求"中的必需服务器（`aws-api-mcp-server`、`cloudwatch-mcp-server`）进行比对
@@ -76,13 +91,13 @@
 
 ---
 
-### 信息收集
+### 第三步：信息收集
 
-在开始分析前，询问用户以下关键信息：
+询问用户以下关键信息：
 
-1. **环境信息收集方式**：
-   - 用户是否已经准备了环境描述文档？
-   - 是否需要使用 MCP 服务器自动扫描 AWS 环境？（需确认 MCP 已在前置步骤中配置完成）
+1. **环境信息收集方式**（如尚未在第一步确定）：
+   - 用户是否已经准备了环境描述文档或 IaC 代码？
+   - 是否需要使用 MCP 服务器自动扫描 AWS 环境？（需确认 MCP 已在第二步中配置完成）
    - 是否可以访问 AWS Management Console？
 
 2. **业务背景**：
@@ -114,7 +129,7 @@
 
 ### 任务 1: 系统组件映射与依赖分析
 
-**使用工具**：AWS CLI 或 AWS API（如可用）、Mermaid 图表
+**使用工具**：通过 MCP 服务器（`aws-api-mcp-server`）进行只读 API 调用（如可用）、Mermaid 图表。禁止通过 Bash 执行任何 `aws` CLI 命令访问 AWS 资源。
 
 **输出内容**：
 1. **系统架构总览图**（Mermaid，展示 Region/AZ/组件层级）

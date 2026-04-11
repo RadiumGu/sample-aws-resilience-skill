@@ -419,11 +419,12 @@ aws sts get-caller-identity
 
 ### Graceful Degradation Without MCP
 
-If MCP Servers are not configured or unavailable, the Skill automatically falls back to these alternatives:
+If MCP Servers are not configured or unavailable, the Skill automatically falls back to these alternatives (**without directly scanning AWS resources**):
 - Analyze IaC code (Terraform/CloudFormation)
 - Analyze architecture documentation
 - Interactive Q&A
-- Direct AWS CLI commands
+
+> **Note**: In fallback mode, direct execution of `aws` CLI commands via Bash to scan or operate on AWS resources is **NOT permitted**. All AWS resource access must go through MCP servers.
 
 ---
 
