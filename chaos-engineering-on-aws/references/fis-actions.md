@@ -1,6 +1,18 @@
 # FIS Actions Reference (by Service)
 
-## FIS General
+## FIS General — API Fault Injection (ec2 and kinesis ONLY)
+
+> ⚠️ These three actions ONLY support `service=ec2` and `service=kinesis`.
+> For other AWS services, use their dedicated FIS Actions:
+>
+> | Service | Dedicated FIS Action |
+> |---------|---------------------|
+> | DynamoDB | `aws:dynamodb:global-table-pause-replication` |
+> | Lambda | `aws:lambda:invocation-add-delay`, `aws:lambda:invocation-error` |
+> | EBS | `aws:ebs:pause-volume-io`, `aws:ebs:volume-io-latency` |
+> | S3 | `aws:s3:bucket-pause-replication` |
+> | RDS | `aws:rds:failover-db-cluster`, `aws:rds:reboot-db-instances` |
+
 | Action | Description |
 |--------|------|
 | `aws:fis:inject-api-internal-error` | Inject 500 errors into API requests for the target IAM Role |
@@ -54,6 +66,18 @@
 | `aws:memorydb:interrupt-cluster-az-power` | MemoryDB AZ power interruption |
 
 ## Lambda
+
+> ⚠️ **Prerequisites**: All Lambda FIS actions require the target Lambda function to have:
+> 1. **FIS Extension Layer** installed (region-specific ARN from [AWS docs](https://docs.aws.amazon.com/fis/latest/userguide/fis-actions-reference.html#lambda-actions))
+> 2. **`AWS_FIS_CONFIGURATION_LOCATION`** environment variable set to the experiment ARN
+>
+> Without these, FIS actions will silently fail. See `fault-catalog.yaml` for setup commands.
+>
+> ⚠️ **Common mistake**: Setting `AWS_FIS_CONFIGURATION_LOCATION` to an S3 path
+> (e.g., `s3://bucket/config`) will cause FIS to reject the experiment at start with
+> _"invalid value for the required environment variable"_. Use the experiment ARN format:
+> `arn:aws:fis:<region>:<account>:experiment/<experiment-id>`
+
 | Action | Description |
 |--------|------|
 | `aws:lambda:invocation-add-delay` | Inject delay into Lambda invocations |

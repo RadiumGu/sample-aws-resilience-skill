@@ -1,6 +1,6 @@
 # AWS 混沌工程
 
-> Last sync: 2026-04-14
+> Last sync: 2026-04-15
 
 ## 角色定位
 
@@ -20,32 +20,36 @@
 
 完整配置指南和示例：[MCP_SETUP_GUIDE.md](MCP_SETUP_GUIDE.md)
 
-| Server | 包名 | 必需 |
-|--------|------|------|
-| aws-api-mcp-server | `awslabs.aws-api-mcp-server` | 是 |
-| cloudwatch-mcp-server | `awslabs.cloudwatch-mcp-server` | 是 |
-| eks-mcp-server | `awslabs.eks-mcp-server` | EKS 时 |
-| chaosmesh-mcp | [RadiumGu/Chaosmesh-MCP](https://github.com/RadiumGu/Chaosmesh-MCP) | 有 Chaos Mesh 时 |
+| Server | 包名 | 必需 | 备注 |
+|--------|------|------|------|
+| aws-api-mcp-server | `awslabs.aws-api-mcp-server` | 是 | ⚠️ 必须设置 `ALLOW_WRITE_OPERATIONS=true` |
+| cloudwatch-mcp-server | `awslabs.cloudwatch-mcp-server` | 是 | |
+| eks-mcp-server | `awslabs.eks-mcp-server` | EKS 时 | |
+| chaosmesh-mcp | [RadiumGu/Chaosmesh-MCP](https://github.com/RadiumGu/Chaosmesh-MCP) | 有 Chaos Mesh 时 | |
 
 无 MCP 时自动降级为 AWS CLI（`aws fis`、`aws cloudwatch`、`kubectl`）。
 
 ## 六步流程
+
+> **启动时**：必须先检查 `output/state.json`。如有历史进度，询问用户是否恢复。详见 workflow-guide.md § Recovery After Interruption。
+
+> **三层状态管理**：(1) `state.json` v2 — 机器可读状态文件，`flock` 并发写入保护；(2) `dashboard.md` — monitor 每周期自动生成；(3) `render-dashboard.sh` — 终端 ASCII 看板。Schema 详见 [scripts/README.md](scripts/README.md)。
 
 > 每步详细指令：[references/workflow-guide_zh.md](references/workflow-guide_zh.md)
 > 状态持久化（文件即状态检查点）：[references/workflow-guide_zh.md § 状态持久化](references/workflow-guide_zh.md#状态持久化)
 
 | 步骤 | 名称 | 关键动作 | 输出 |
 |------|------|---------|------|
-| 1 | 定义实验目标 | 按评分筛选可测试风险，确认范围 | `output/checkpoints/step1-scope.json` |
+| 1 | 定义实验目标 | 按评分筛选可测试风险，确认范围，检测 Chaos Mesh | `output/checkpoints/step1-scope.json` |
 | 2 | 选择目标资源 | 验证 ARN、计算爆炸半径、标记角色 | `output/checkpoints/step2-assessment.json` |
 | 3 | 设计假设和实验 | 假设 + 工具选择 + 配置生成 | `output/checkpoints/step3-experiment.json` + `output/templates/` |
 | 4 | Pre-flight 检查 | IAM、Alarm、爆炸半径、团队就绪 | `output/checkpoints/step4-validation.json` |
-| 5 | 受控执行 | 后台脚本：runner + monitor + log-collector | `output/checkpoints/step5-experiment.json` + 指标/日志 |
+| 5 | 受控执行 | 后台脚本：runner + monitor + log-collector | `output/checkpoints/step5-experiment.json` + 指标/日志 + `dashboard.md` |
 | 6 | 分析与报告 | 从 AWS API 验证结果，分析，生成报告 | `output/step6-report.md` + `output/step6-report.html` |
 
 ### 关键决策点（每步执行前 read）
 
-**步骤 3 — 工具选择**：查阅 [references/fault-catalog.yaml](references/fault-catalog.yaml)（41 种故障类型），选择逻辑：
+**步骤 3 — 工具选择**：查阅 [references/fault-catalog.yaml](references/fault-catalog.yaml)（42 种故障类型），选择逻辑：
 - AZ/Region 复合故障 → FIS Scenario Library → [references/scenario-library_zh.md](references/scenario-library_zh.md)
 - AWS 基础设施 → FIS 单 Action → [references/fis-actions_zh.md](references/fis-actions_zh.md)
 - K8s Pod/容器 → Chaos Mesh（优先于 FIS pod actions）→ [references/chaosmesh-crds_zh.md](references/chaosmesh-crds_zh.md)
@@ -55,9 +59,9 @@
 **步骤 3 — 必需输出**：必须生成 `output/monitoring/metric-queries.json` 供步骤 5 监控使用。
 
 **步骤 5 — 执行**：不要在 Agent 循环中轮询。使用后台脚本：
-- [scripts/experiment-runner.sh](scripts/experiment-runner.sh) — 注入 + 轮询 + 超时
-- [scripts/monitor.sh](scripts/monitor.sh) — CloudWatch 指标采集
-- [scripts/log-collector.sh](scripts/log-collector.sh) — Pod 日志采集 + 5 类分类
+- [scripts/experiment-runner.sh](scripts/experiment-runner.sh) — 注入 + 轮询 + 超时。Pod-kill 实验用 `--one-shot --pod-label "app=X" --deployment "deploy-name"`，在 AllInjected + Pods Ready 时自动完成（不再等超时）
+- [scripts/monitor.sh](scripts/monitor.sh) — CloudWatch 指标采集。两种模式：**FIS 模式**（设 `EXPERIMENT_ID`，FIS 完成自动停止）或 **Chaos Mesh 模式**（不设 `EXPERIMENT_ID`，用 `DURATION` 定时停止）。默认 `INTERVAL=15` 秒
+- [scripts/log-collector.sh](scripts/log-collector.sh) — ⚠️ **所有实验必须启动**（FIS 和 CM 均强制）。Pod 日志采集 + 5 类错误分类。SIGTERM 立即响应（先写 summary 再退出）
 
 脚本参数：[scripts/README.md](scripts/README.md)
 
@@ -66,7 +70,7 @@
 ## 安全原则
 
 1. **最小爆炸半径**：不超过约束限制
-2. **强制停止条件**：每个 FIS 实验绑定 CloudWatch Alarm
+2. **强制停止条件**：每个 FIS 实验绑定 CloudWatch Alarm。Stop condition alarm **必须**设置 `--treat-missing-data notBreaching`，防止实验启动时误触发
 3. **渐进式**：Staging → Production，单故障 → 级联
 4. **可逆**：所有实验有回滚方案
 5. **人工确认**：生产环境双重确认

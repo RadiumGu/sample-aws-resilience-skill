@@ -66,6 +66,33 @@ output/
 
 启动时检查 `output/state.json`——若存在且未完成 → 提示继续或重新开始。
 
+### state.json v2 三层状态架构
+
+**第一层：state.json**（机器可读，`flock` 并发安全）
+```json
+{
+  "version": 2,
+  "workflow": { "current_step": 5, "status": "in_progress" },
+  "experiments": [
+    { "id": "EXP-001", "status": "completed", "elapsed_seconds": 74, "result": "PASSED" }
+  ],
+  "background_pids": { "runner": 12345, "monitor": 12346, "log_collector": 12347 }
+}
+```
+
+**第二层：dashboard.md**（`monitor.sh` 每周期通过 `update-dashboard.sh` 自动生成，IDE Markdown 预览可看）
+
+**第三层：终端 ASCII 看板**（`watch -n 5 -c bash scripts/render-dashboard.sh`）
+
+### 会话中断恢复
+
+Agent 启动时检查 `state.json`：
+1. **不存在** → 全新开始
+2. **存在且 `status: in_progress`** → 恢复模式：
+   - 检查 `background_pids` 中各进程是否存活（`kill -0 $PID`）
+   - 查询 FIS/CM 实际状态
+   - 存活 → 继续观测；已退出 → 从 `current_step` 恢复或重启
+
 ## 步骤 1：定义实验目标
 
 **消费**：风险清单 (2.4) + 项目元数据 (2.1)
@@ -154,6 +181,8 @@ MCP 优先 → 降级为 Schema + CLI。
 
 每个实验必须绑定：CloudWatch Alarm + 时间上限 + 手动终止能力。
 
+> ⚠️ Stop condition alarm **必须**设置 `--treat-missing-data notBreaching`，防止实验启动阶段因缺少数据点而误触发停止。
+
 ### FIS 成本估算
 
 | 成本项 | 定价 | 示例 |
@@ -202,15 +231,55 @@ MCP 优先 → 降级为 Schema + CLI。
 > ⚠️ **关键**：不要在 Agent 循环中轮询实验状态。使用 `experiment-runner.sh` 后台处理。
 
 启动后台进程后 `wait`：
+
+> ⚠️ **MANDATORY**：每次实验**必须**启动以下全部三个后台进程，
+> 无论实验类型（FIS / Chaos Mesh）或预计时长：
+> 1. `experiment-runner.sh` — 管理实验生命周期
+> 2. `monitor.sh` — 采集 CloudWatch 指标 + 心跳（FIS 模式设 `EXPERIMENT_ID`，CM 模式不设）
+> 3. `log-collector.sh` — 采集 Pod 日志用于事后分析
+>
+> 不要跳过 log-collector，即使实验很短。注入期间的 Pod 日志
+> 是错误分类和 MTTR 计算的必要数据（报告 Section 4: Log Analysis）。
+
 ```bash
-nohup bash scripts/experiment-runner.sh --mode fis --template-id "$TEMPLATE_ID" ... &
+# FIS 实验：
+nohup bash scripts/experiment-runner.sh --mode fis --template-id "$TEMPLATE_ID" \
+    --region "$REGION" --state-exp-id "EXP-001" --output-dir output/ &
 RUNNER_PID=$!
+
+# Chaos Mesh 实验（pod-kill 等一次性注入用 --one-shot）：
+nohup bash scripts/experiment-runner.sh --mode chaosmesh \
+    --manifest output/templates/pod-kill.yaml --namespace "$NAMESPACE" \
+    --one-shot --pod-label "app=petsite" --deployment "petsite-deployment" \
+    --state-exp-id "EXP-001" --output-dir output/ &
+RUNNER_PID=$!
+
+# Monitor（Chaos Mesh 实验不设 EXPERIMENT_ID，用 DURATION 控制停止）：
+export DURATION=300  # CM 模式必须设置，否则无限运行
 nohup bash scripts/monitor.sh &
+# Log collector（MANDATORY — 所有实验必须启动）：
 nohup bash scripts/log-collector.sh --namespace {NS} --services "{svcs}" --mode live ... &
 wait $RUNNER_PID
 ```
 
+> 💡 默认 monitor 采样间隔为 15s。实验 >30 分钟时可设 `INTERVAL=30` 或 `INTERVAL=60`。
+
 退出码：0=完成, 1=失败, 2=超时
+
+> **Monitor 健康检查**：启动后定期检查 `output/monitoring/monitor-status.json`。
+> 若 `last_collect` 时间戳超过 2× INTERVAL（~30s），monitor 可能卡住 — 报告用户。
+>
+> **看板**：启动后台脚本后，告知用户：
+> "📊 **看板选项：**
+>  1. **IDE 预览**：打开 `output/dashboard.md` 的 Markdown 预览
+>  2. **终端（实时）**：在另一个终端运行：
+>     ```bash
+>     watch -n 5 -c bash scripts/render-dashboard.sh
+>     ```
+>  3. **快速查看**：`cat output/dashboard.md`
+>
+> 看板每个监控周期（~15s）自动更新。
+> 可以安全关闭本对话 — 实验在后台继续运行。"
 
 ### 阶段 2：日志分类
 5 类：timeout, connection, 5xx, oom, other
@@ -244,6 +313,22 @@ kubectl patch networkchaos my-exp -n ns --type merge -p '{"spec":{"duration":"2m
 ### 6.0 结果验证（必须 — 首先执行）
 
 > ⚠️ 写报告前，必须从 AWS/K8s 验证实际实验状态。
+
+### 6.0.5 数据完整性检查（verdict 前必须执行）
+
+在出判定结论前，检查以下数据源是否完整：
+
+| 数据源 | 文件 | 缺失影响 |
+|--------|------|---------|
+| CloudWatch 指标 | `step5-metrics.jsonl` | 无法量化 SLO 合规 |
+| 应用日志 | `step5-logs.jsonl` | 无法做错误分类 |
+| 日志摘要 | `step5-log-summary.json` | 无 MTTR 计算 |
+| 基线数据 | `baseline-*.json` | 无对比基准 |
+
+判定映射：
+- **数据完整** → PASSED ✅ 或 FAILED ❌（基于假设验证）
+- **部分数据缺失但有关键指标** → OBSERVED ⚠️（标注数据限制）
+- **关键数据全部缺失** → BLOCKED 🚫（无法判定）
 
 **FIS 结果映射**：
 | FIS `state.status` | 报告结果 |

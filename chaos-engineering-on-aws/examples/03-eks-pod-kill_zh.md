@@ -61,13 +61,27 @@ pod_kill(
 # 检查目标 Pod 数量
 kubectl get pods -n production -l app=web-frontend
 
-# 注入故障
+# 使用 experiment-runner.sh（推荐 — 自动轮询 + 状态管理）：
+nohup bash scripts/experiment-runner.sh --mode chaosmesh \
+    --manifest examples/pod-kill-web-frontend.yaml --namespace production \
+    --one-shot --pod-label "app=web-frontend" --deployment "web-frontend" \
+    --state-exp-id "EXP-001" --output-dir output/ &
+RUNNER_PID=$!
+
+# Monitor（Chaos Mesh 不设 EXPERIMENT_ID）：
+export NAMESPACE="production" REGION="ap-northeast-1" DURATION=300
+nohup bash scripts/monitor.sh &
+
+# Log collector（所有实验必须启动）：
+nohup bash scripts/log-collector.sh --namespace production \
+    --services "web-frontend" --mode live --duration 300 --output-dir output/ &
+
+wait $RUNNER_PID
+# 退出码：0=完成（one-shot），1=失败，2=超时
+
+# 手动方式（不使用脚本）：
 kubectl apply -f examples/pod-kill-web-frontend.yaml
-
-# 观察 Pod 重建
 kubectl get pods -n production -l app=web-frontend -w
-
-# 清理（到期自动清理，或手动）
 kubectl delete -f examples/pod-kill-web-frontend.yaml
 ```
 

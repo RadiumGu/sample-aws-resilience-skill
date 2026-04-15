@@ -15,6 +15,19 @@ This Skill relies on AWS official MCP Servers to interact with AWS services. Bel
 
 **Installation**: Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/getting-started/installation/)
 
+> ⚠️ **IMPORTANT**: `aws-api-mcp-server` defaults to **read-only mode**.
+> Chaos engineering requires write operations (`fis:StartExperiment`,
+> `fis:StopExperiment`, `fis:CreateExperimentTemplate`,
+> `cloudwatch:PutMetricAlarm`).
+>
+> You **MUST** set `ALLOW_WRITE_OPERATIONS=true` in the environment variables.
+> Without this, the MCP server will silently reject write API calls and may
+> disconnect. The Agent will then fall back to AWS CLI, but this wastes time
+> and may confuse the workflow.
+>
+> **Fallback**: If MCP write still fails, use AWS CLI directly:
+> `aws fis start-experiment --experiment-template-id <id> --region <region>`
+
 #### Claude Code
 
 ```bash
@@ -22,6 +35,7 @@ claude mcp add awslabs-aws-api-mcp-server \
   -e AWS_REGION=ap-northeast-1 \
   -e AWS_PROFILE=default \
   -e FASTMCP_LOG_LEVEL=ERROR \
+  -e ALLOW_WRITE_OPERATIONS=true \
   -- uvx awslabs.aws-api-mcp-server@latest
 ```
 
@@ -38,7 +52,8 @@ Edit `.kiro/settings/mcp.json`:
       "env": {
         "AWS_REGION": "ap-northeast-1",
         "AWS_PROFILE": "default",
-        "FASTMCP_LOG_LEVEL": "ERROR"
+        "FASTMCP_LOG_LEVEL": "ERROR",
+        "ALLOW_WRITE_OPERATIONS": "true"
       },
       "disabled": false,
       "autoApprove": []
@@ -59,7 +74,8 @@ Edit `.cursor/mcp.json` or `.vscode/mcp.json`:
       "args": ["awslabs.aws-api-mcp-server@latest"],
       "env": {
         "AWS_REGION": "ap-northeast-1",
-        "FASTMCP_LOG_LEVEL": "ERROR"
+        "FASTMCP_LOG_LEVEL": "ERROR",
+        "ALLOW_WRITE_OPERATIONS": "true"
       }
     }
   }
@@ -159,7 +175,8 @@ Below is the full recommended MCP configuration for this Skill (covering all sce
       "env": {
         "AWS_REGION": "ap-northeast-1",
         "AWS_PROFILE": "default",
-        "FASTMCP_LOG_LEVEL": "ERROR"
+        "FASTMCP_LOG_LEVEL": "ERROR",
+        "ALLOW_WRITE_OPERATIONS": "true"
       }
     },
     "awslabs.cloudwatch-mcp-server": {

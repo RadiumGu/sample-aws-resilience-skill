@@ -26,6 +26,23 @@
 | P99 延迟 | 120ms | <= 500ms | {value} | {value} | ✅/❌ |
 | 恢复时间 | N/A | <= {RTO}s | {value} | N/A | ✅/❌ |
 
+## §6.0.5 数据完整性检查（verdict 前必须执行）
+
+| 数据源 | 文件 | 状态 | 备注 |
+|--------|------|:----:|------|
+| CloudWatch 指标 | step5-metrics.jsonl | ✅/❌ | {行数} 个采样 |
+| 应用日志 | step5-logs.jsonl | ✅/❌ | {行数} 行 |
+| 日志摘要 | step5-log-summary.json | ✅/❌ | |
+| 基线数据 | baseline-*.json | ✅/❌ | |
+| ALB 流量 | RequestCount | ✅/❌ | >0 才有意义 |
+
+**数据限制声明**: {如有数据缺失，在此说明对 verdict 的影响}
+
+判定映射：
+- 数据完整 → PASSED ✅ 或 FAILED ❌（基于假设验证）
+- 部分缺失但有关键指标 → OBSERVED ⚠️
+- 关键数据全部缺失 → BLOCKED 🚫
+
 ## 时间线
 - T+0s: 故障注入开始
 - T+{X}s: 检测到影响

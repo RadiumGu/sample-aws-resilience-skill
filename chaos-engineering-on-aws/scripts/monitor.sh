@@ -4,21 +4,30 @@
 # Usage: nohup ./monitor.sh &
 #
 # Variables to replace (filled in by Agent at generation time):
-#   EXPERIMENT_ID  — FIS experiment ID
+#   EXPERIMENT_ID  — FIS experiment ID (optional; omit for Chaos Mesh experiments)
 #   NAMESPACE      — CloudWatch metric namespace
 #   METRIC_NAMES   — List of metrics to collect
 #   DIMENSIONS     — Metric dimensions
 #   REGION         — AWS region
 #   OUTPUT_FILE    — Output file path
-#   INTERVAL       — Collection interval (seconds)
+#   INTERVAL       — Collection interval in seconds (default 15)
+#   DURATION       — Max collection duration in seconds (0 = unlimited, stop via SIGTERM)
 
 set -euo pipefail
 
-EXPERIMENT_ID="${EXPERIMENT_ID:?'EXPERIMENT_ID not set'}"
+EXPERIMENT_ID="${EXPERIMENT_ID:-}"
+if [[ -z "$EXPERIMENT_ID" ]]; then
+  echo "[monitor] WARNING: EXPERIMENT_ID not set — FIS status checks disabled (Chaos Mesh mode)" >&2
+  echo "[monitor] Metric collection will continue; stop via SIGTERM or DURATION timeout" >&2
+fi
 NAMESPACE="${NAMESPACE:?'NAMESPACE not set'}"
 REGION="${REGION:?'REGION not set — pass AWS_DEFAULT_REGION or set REGION env var'}"
 OUTPUT_FILE="${OUTPUT_FILE:-output/monitoring/step5-metrics.jsonl}"
-INTERVAL="${INTERVAL:-30}"
+OUTPUT_DIR="${OUTPUT_DIR:-output}"
+# Default 15s balances data density vs CloudWatch API limits (50 TPS).
+# For long experiments (>30min), set INTERVAL=30 or INTERVAL=60 to reduce API calls.
+INTERVAL="${INTERVAL:-15}"
+DURATION="${DURATION:-0}"  # 0 = unlimited (stop via SIGTERM or FIS completion)
 
 # Custom metrics support
 CUSTOM_METRICS_FILE="${CUSTOM_METRICS_FILE:-}"
@@ -31,18 +40,29 @@ fi
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 echo "[monitor] Started at $(date -u +%FT%TZ), interval=${INTERVAL}s" >&2
-echo "[monitor] Experiment: $EXPERIMENT_ID" >&2
+if [[ -n "$EXPERIMENT_ID" ]]; then
+  echo "[monitor] Experiment: $EXPERIMENT_ID (FIS mode)" >&2
+else
+  echo "[monitor] No EXPERIMENT_ID — metrics-only mode" >&2
+fi
 echo "[monitor] Output: $OUTPUT_FILE" >&2
+[[ "$DURATION" -gt 0 ]] && echo "[monitor] Duration limit: ${DURATION}s" >&2
+MONITOR_START=$(date +%s)
 
+SAMPLE_COUNT=0
 while true; do
     TIMESTAMP=$(date -u +%FT%TZ)
 
-    # Check FIS experiment status
-    EXP_STATUS=$(aws fis get-experiment \
-        --id "$EXPERIMENT_ID" \
-        --region "$REGION" \
-        --query 'experiment.state.status' \
-        --output text 2>/dev/null || echo "UNKNOWN")
+    # Check FIS experiment status (skip if no EXPERIMENT_ID)
+    if [[ -n "$EXPERIMENT_ID" ]]; then
+        EXP_STATUS=$(aws fis get-experiment \
+            --id "$EXPERIMENT_ID" \
+            --region "$REGION" \
+            --query 'experiment.state.status' \
+            --output text 2>/dev/null || echo "UNKNOWN")
+    else
+        EXP_STATUS="N/A"
+    fi
 
     # Collect CloudWatch metrics
     END_TIME=$(date -u +%FT%TZ)
@@ -53,7 +73,7 @@ while true; do
         echo "{\"ts\":\"$TIMESTAMP\",\"type\":\"warning\",\"message\":\"output/monitoring/metric-queries.json not found — skipping CloudWatch metric collection for this interval\"}" >> "$OUTPUT_FILE"
         METRICS_JSON='{"MetricDataResults":[]}'
     else
-        METRICS_JSON=$(aws cloudwatch get-metric-data \
+        METRICS_JSON=$(timeout 30 aws cloudwatch get-metric-data \
             --region "$REGION" \
             --start-time "$START_TIME" \
             --end-time "$END_TIME" \
@@ -89,13 +109,34 @@ while true; do
 
     echo "[monitor] $TIMESTAMP status=$EXP_STATUS" >&2
 
-    # Exit if experiment ended
-    case "$EXP_STATUS" in
-        completed|failed|stopped|cancelled)
-            echo "[monitor] Experiment $EXP_STATUS, stopping monitor." >&2
+    # Write monitor heartbeat (Agent can poll this to check monitor health)
+    SAMPLE_COUNT=$((SAMPLE_COUNT + 1))
+    echo "{\"last_collect\":\"$TIMESTAMP\",\"status\":\"$EXP_STATUS\",\"samples\":$SAMPLE_COUNT}" \
+        > "$OUTPUT_DIR/monitoring/monitor-status.json"
+
+    # Update dashboard if script exists
+    if [[ -f "scripts/update-dashboard.sh" ]]; then
+        OUTPUT_DIR="$OUTPUT_DIR" bash scripts/update-dashboard.sh 2>/dev/null || true
+    fi
+
+    # Exit if FIS experiment ended
+    if [[ -n "$EXPERIMENT_ID" ]]; then
+        case "$EXP_STATUS" in
+            completed|failed|stopped|cancelled)
+                echo "[monitor] Experiment $EXP_STATUS, stopping monitor." >&2
+                break
+                ;;
+        esac
+    fi
+
+    # Exit if duration limit reached
+    if [[ "$DURATION" -gt 0 ]]; then
+        local_elapsed=$(( $(date +%s) - MONITOR_START ))
+        if (( local_elapsed >= DURATION )); then
+            echo "[monitor] Duration limit ${DURATION}s reached, stopping." >&2
             break
-            ;;
-    esac
+        fi
+    fi
 
     sleep "$INTERVAL"
 done

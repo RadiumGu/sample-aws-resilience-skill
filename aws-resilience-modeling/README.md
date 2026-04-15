@@ -142,29 +142,27 @@ Upon completion of the analysis, you will receive:
 ```
 aws-resilience-modeling/
 ├── SKILL.md                                    # Language router (loads EN/ZH)
-├── SKILL_EN.md                                 # Skill instructions (English)
-├── SKILL_ZH.md                                 # Skill instructions (Chinese)
-├── README.md                                   # This file (English)
-├── README_zh.md                                # Readme (Chinese)
-├── references/
-│   ├── resilience-framework.md                 # Resilience analysis reference framework (English)
-│   ├── resilience-framework_zh.md              # Resilience analysis reference framework (Chinese)
-│   ├── common-risks-reference.md               # AWS common service risk manual (English)
-│   ├── common-risks-reference_zh.md            # AWS common service risk manual (Chinese)
-│   ├── assessment-output-spec.md               # Chaos engineering input specification (English)
-│   ├── assessment-output-spec_zh.md            # Chaos engineering input specification (Chinese)
-│   ├── report-generation.md                    # Report generation process and code (English)
-│   ├── report-generation_zh.md                 # Report generation process and code (Chinese)
-│   ├── HTML-TEMPLATE-USAGE.md                  # HTML template usage guide (English)
-│   ├── HTML-TEMPLATE-USAGE_zh.md               # HTML template usage guide (Chinese)
-│   ├── MCP_SETUP_GUIDE.md                      # MCP server configuration guide (English)
-│   └── MCP_SETUP_GUIDE_zh.md                   # MCP server configuration guide (Chinese)
+├── SKILL_EN.md / SKILL_ZH.md                  # Skill instructions (bilingual, ~153 lines each)
+├── README.md / README_zh.md                    # Documentation (bilingual)
+├── references/                                 # Reference docs (loaded on demand by Agent)
+│   ├── analysis-tasks.md / _zh.md              # 8 analysis task detailed instructions
+│   ├── resilience-framework.md / _zh.md        # Framework index & references map
+│   ├── resilience-analysis-core.md / _zh.md    # 9-dimension scoring methodology
+│   ├── waf-reliability-pillar.md / _zh.md      # WAF Reliability Pillar + DR cost baselines
+│   ├── common-risks-reference.md / _zh.md      # 50+ common AWS risk patterns
+│   ├── assessment-output-spec.md / _zh.md      # Chaos skill bridge: 8-section output spec
+│   ├── compliance-mapping.md / _zh.md          # SOC2/ISO 27001/NIST CSF mapping
+│   ├── cloud-design-patterns.md / _zh.md       # Cloud resilience design patterns
+│   ├── chaos-engineering-methodology.md / _zh.md # Chaos engineering methodology reference
+│   ├── observability-standards.md / _zh.md     # AWS observability best practices
+│   ├── report-generation.md / _zh.md           # Report generation workflow
+│   ├── HTML-TEMPLATE-USAGE.md / _zh.md         # HTML template usage guide
+│   └── MCP_SETUP_GUIDE.md / _zh.md             # MCP server configuration guide
 ├── scripts/
 │   └── generate-html-report.py                 # Python report generator
 └── assets/
     ├── html-report-template.html               # HTML interactive report template
-    ├── example-report-template.md              # Markdown report example (English)
-    └── example-report-template_zh.md           # Markdown report example (Chinese)
+    └── example-report-template.md / _zh.md     # Markdown report example
 ```
 
 ## Analysis Framework

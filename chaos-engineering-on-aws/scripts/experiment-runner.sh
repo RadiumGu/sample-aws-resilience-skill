@@ -29,6 +29,10 @@ REGION="${AWS_DEFAULT_REGION:-}"
 TIMEOUT=600                # Max wait time in seconds (default: 10 min)
 POLL_INTERVAL=15           # Seconds between status checks
 OUTPUT_DIR="./output"
+STATE_EXP_ID=""            # Custom experiment ID in state.json (e.g., EXP-001)
+ONE_SHOT=false             # One-shot injection mode (pod-kill): complete on AllInjected + Pods Ready
+POD_LABEL=""               # Pod label selector for --one-shot completion check
+DEPLOYMENT=""              # Deployment name for --one-shot replica count (optional)
 QUIET=false
 
 # ---------------------------------------------------------------------------
@@ -48,6 +52,12 @@ Chaos Mesh Options:
   --namespace NS         K8s namespace
 
 Common Options:
+  --state-exp-id ID      Experiment ID in state.json for dashboard/recovery updates
+  --one-shot             One-shot injection mode (pod-kill, pod-failure with fixed count).
+                         Completes when AllInjected=True AND target pods are Ready.
+  --pod-label LABEL      Pod label selector for --one-shot completion check (e.g. "app=petsite")
+  --deployment NAME      Deployment name for --one-shot replica count (e.g. "petsite-deployment").
+                         If omitted, auto-discovers deployment by matching spec.selector.matchLabels.
   --timeout SECONDS      Max wait time (default: 600)
   --poll-interval SECS   Poll interval (default: 15)
   --output-dir DIR       Output directory (default: ./output)
@@ -68,6 +78,10 @@ while [[ $# -gt 0 ]]; do
         --timeout)        TIMEOUT="$2";        shift 2 ;;
         --poll-interval)  POLL_INTERVAL="$2";  shift 2 ;;
         --output-dir)     OUTPUT_DIR="$2";     shift 2 ;;
+        --state-exp-id)   STATE_EXP_ID="$2";  shift 2 ;;
+        --one-shot)       ONE_SHOT=true;       shift ;;
+        --pod-label)      POD_LABEL="$2";      shift 2 ;;
+        --deployment)     DEPLOYMENT="$2";     shift 2 ;;
         --quiet)          QUIET=true;          shift ;;
         -h|--help)        usage ;;
         *)                echo "Unknown option: $1" >&2; usage ;;
@@ -84,6 +98,23 @@ log() {
     local msg="[experiment-runner] $(date -u +%FT%TZ) $*"
     echo "$msg" >> "$LOG_FILE"
     $QUIET || echo "$msg" >&2
+}
+
+# ---------------------------------------------------------------------------
+# State management (state.json v2 — shared with monitor.sh via flock)
+# ---------------------------------------------------------------------------
+STATE_JSON="$OUTPUT_DIR/state.json"
+
+update_state() {
+    local exp_id="$1" field="$2" value="$3"
+    [[ ! -f "$STATE_JSON" ]] && return 0
+    (
+        flock -w 5 200 || { log "WARN: state lock timeout"; exit 1; }
+        jq --arg id "$exp_id" --arg f "$field" --arg v "$value" \
+            '(.experiments[]? | select(.id == $id)) |= . + {($f): $v}' \
+            "$STATE_JSON" > "$STATE_JSON.tmp" \
+            && mv "$STATE_JSON.tmp" "$STATE_JSON"
+    ) 200>"$STATE_JSON.lock"
 }
 
 # ---------------------------------------------------------------------------
@@ -112,6 +143,27 @@ run_fis() {
 
         # Save experiment ID for other scripts (monitor.sh)
         echo "$EXPERIMENT_ID" > "$OUTPUT_DIR/monitoring/experiment_id.txt"
+
+        # Quick initial check — catch immediate failures (e.g., stop condition block)
+        sleep 3
+        local init_status
+        init_status=$(aws fis get-experiment --id "$EXPERIMENT_ID" --region "$REGION" \
+            --query 'experiment.state.status' --output text 2>/dev/null || echo "UNKNOWN")
+        if [[ "$init_status" == "failed" || "$init_status" == "stopped" ]]; then
+            local init_reason
+            init_reason=$(aws fis get-experiment --id "$EXPERIMENT_ID" --region "$REGION" \
+                --query 'experiment.state.reason' --output text 2>/dev/null || echo "")
+            log "IMMEDIATE FAILURE: $init_status — $init_reason"
+            jq -n --arg id "$EXPERIMENT_ID" --arg status "$init_status" \
+                --arg reason "$init_reason" \
+                '{experiment_id:$id, status:$status, reason:$reason, elapsed_seconds:3, immediate_failure:true}' \
+                > "$STATE_FILE"
+            [[ -n "$STATE_EXP_ID" ]] && {
+                update_state "$STATE_EXP_ID" "status" "$init_status"
+                update_state "$STATE_EXP_ID" "result" "FAILED"
+            }
+            exit 1
+        fi
     fi
 
     [[ -z "$EXPERIMENT_ID" ]] && { echo "ERROR: --template-id or --experiment-id required" >&2; exit 1; }
@@ -135,6 +187,10 @@ run_fis() {
                 --argjson timeout "$TIMEOUT" \
                 '{experiment_id:$id, status:$status, elapsed_seconds:$elapsed, timeout_seconds:$timeout, message:"Experiment stopped due to timeout"}' \
                 > "$STATE_FILE"
+            [[ -n "$STATE_EXP_ID" ]] && {
+                update_state "$STATE_EXP_ID" "status" "timeout"
+                update_state "$STATE_EXP_ID" "result" "TIMEOUT"
+            }
             log "State written to $STATE_FILE"
             exit 2
         fi
@@ -169,6 +225,10 @@ run_fis() {
                     --arg end "$(date -u +%FT%TZ)" \
                     '{experiment_id:$id, status:$status, elapsed_seconds:$elapsed, ended_at:$end}' \
                     > "$STATE_FILE"
+                [[ -n "$STATE_EXP_ID" ]] && {
+                    update_state "$STATE_EXP_ID" "status" "completed"
+                    update_state "$STATE_EXP_ID" "elapsed_seconds" "$elapsed"
+                }
                 exit 0
                 ;;
             failed)
@@ -180,9 +240,13 @@ run_fis() {
                     --argjson elapsed "$elapsed" \
                     '{experiment_id:$id, status:$status, reason:$reason, elapsed_seconds:$elapsed}' \
                     > "$STATE_FILE"
+                [[ -n "$STATE_EXP_ID" ]] && {
+                    update_state "$STATE_EXP_ID" "status" "failed"
+                    update_state "$STATE_EXP_ID" "result" "FAILED"
+                }
                 exit 1
                 ;;
-            stopped|cancelled)
+                        stopped|cancelled)
                 log "Experiment $status: $reason"
                 jq -n \
                     --arg id "$EXPERIMENT_ID" \
@@ -191,6 +255,10 @@ run_fis() {
                     --argjson elapsed "$elapsed" \
                     '{experiment_id:$id, status:$status, reason:$reason, elapsed_seconds:$elapsed}' \
                     > "$STATE_FILE"
+                [[ -n "$STATE_EXP_ID" ]] && {
+                    update_state "$STATE_EXP_ID" "status" "$status"
+                    update_state "$STATE_EXP_ID" "result" "ABORTED"
+                }
                 exit 1
                 ;;
         esac
@@ -234,6 +302,10 @@ run_chaosmesh() {
                 --argjson elapsed "$elapsed" \
                 '{experiment_name:$name, status:$status, elapsed_seconds:$elapsed, message:"Experiment deleted due to timeout"}' \
                 > "$STATE_FILE"
+            [[ -n "$STATE_EXP_ID" ]] && {
+                update_state "$STATE_EXP_ID" "status" "timeout"
+                update_state "$STATE_EXP_ID" "result" "TIMEOUT"
+            }
             exit 2
         fi
 
@@ -249,6 +321,10 @@ run_chaosmesh() {
                     --argjson elapsed "$elapsed" \
                     '{experiment_name:$name, status:$status, elapsed_seconds:$elapsed, message:"Experiment CR not found (deleted or cleaned up)"}' \
                     > "$STATE_FILE"
+                [[ -n "$STATE_EXP_ID" ]] && {
+                    update_state "$STATE_EXP_ID" "status" "aborted"
+                    update_state "$STATE_EXP_ID" "result" "ABORTED"
+                }
                 log "State written to $STATE_FILE"
                 exit 1
             fi
@@ -264,6 +340,50 @@ run_chaosmesh() {
 
         log "Phase: injected=$phase recovered=${cm_status:-pending} (${elapsed}s elapsed)"
 
+        # One-shot completion: AllInjected=True + target pods are Ready
+        if [[ "$ONE_SHOT" == "true" && "$phase" == "True" && -n "$POD_LABEL" ]]; then
+            local ready_pods=0 desired_pods=0
+            # Count Ready pods by label
+            ready_pods=$(kubectl get pods -n "$exp_ns" -l "$POD_LABEL" \
+                --field-selector status.phase=Running \
+                -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
+                2>/dev/null | grep -c "True" || echo "0")
+            # Get desired replicas: use --deployment if given, else find by selector
+            if [[ -n "$DEPLOYMENT" ]]; then
+                desired_pods=$(kubectl get deployment "$DEPLOYMENT" -n "$exp_ns" \
+                    -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "0")
+            else
+                # Fallback: find deployment whose selector matches POD_LABEL
+                local lbl_key lbl_val
+                lbl_key="${POD_LABEL%%=*}"
+                lbl_val="${POD_LABEL#*=}"
+                desired_pods=$(kubectl get deployments -n "$exp_ns" -o json 2>/dev/null \
+                    | jq -r --arg k "$lbl_key" --arg v "$lbl_val" \
+                      '.items[] | select(.spec.selector.matchLabels[$k]==$v) | .spec.replicas' \
+                    2>/dev/null | head -1 || echo "0")
+            fi
+            # Sanitize to integer
+            ready_pods=$((ready_pods + 0))
+            desired_pods=$((desired_pods + 0))
+            if (( ready_pods >= desired_pods && desired_pods > 0 )); then
+                log "One-shot COMPLETED: AllInjected=True + $ready_pods/$desired_pods pods Ready"
+                jq -n \
+                    --arg name "$exp_name" \
+                    --arg status "completed" \
+                    --argjson elapsed "$elapsed" \
+                    --arg end "$(date -u +%FT%TZ)" \
+                    '{experiment_name:$name, status:$status, elapsed_seconds:$elapsed, ended_at:$end, one_shot:true}' \
+                    > "$STATE_FILE"
+                [[ -n "$STATE_EXP_ID" ]] && {
+                    update_state "$STATE_EXP_ID" "status" "completed"
+                    update_state "$STATE_EXP_ID" "elapsed_seconds" "$elapsed"
+                }
+                # Clean up CR
+                kubectl delete "$kind" "$exp_name" -n "$exp_ns" 2>/dev/null || true
+                exit 0
+            fi
+        fi
+
         # Chaos Mesh experiment completed when AllRecovered=True
         if [[ "$cm_status" == "True" ]]; then
             log "Experiment COMPLETED (AllRecovered)"
@@ -274,6 +394,10 @@ run_chaosmesh() {
                 --arg end "$(date -u +%FT%TZ)" \
                 '{experiment_name:$name, status:$status, elapsed_seconds:$elapsed, ended_at:$end}' \
                 > "$STATE_FILE"
+            [[ -n "$STATE_EXP_ID" ]] && {
+                update_state "$STATE_EXP_ID" "status" "completed"
+                update_state "$STATE_EXP_ID" "elapsed_seconds" "$elapsed"
+            }
             exit 0
         fi
 

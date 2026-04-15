@@ -54,6 +54,13 @@
 | `aws:memorydb:interrupt-cluster-az-power` | MemoryDB AZ 断电 |
 
 ## Lambda
+
+> ⚠️ **前置条件**：所有 Lambda FIS action 需要目标 Lambda 函数：
+> 1. 安装 **FIS Extension Layer**（各 Region ARN 见 [AWS 文档](https://docs.aws.amazon.com/fis/latest/userguide/fis-actions-reference.html#lambda-actions)）
+> 2. 设置 **`AWS_FIS_CONFIGURATION_LOCATION`** 环境变量，值为**实验 ARN**（`arn:aws:fis:<REGION>:<ACCOUNT>:experiment/<EXP_ID>`）
+>
+> ❌ **常见错误**：将此环境变量设为 S3 路径或模板 ARN — 必须是实验 ARN。无此配置 FIS action 将**静默失败**。
+
 | Action | 说明 |
 |--------|------|
 | `aws:lambda:invocation-add-delay` | Lambda 调用注入延迟 |

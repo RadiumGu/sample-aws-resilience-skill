@@ -105,10 +105,10 @@ if python3 -c "import yaml; yaml.safe_load(open('$SKILL_DIR/references/fault-cat
     cm=$(grep -A1 "^  - type:" "$SKILL_DIR/references/fault-catalog.yaml" | grep "backend: chaosmesh" | wc -l)
     scenario=$(grep -A1 "^  - type:" "$SKILL_DIR/references/fault-catalog.yaml" | grep "backend: fis-scenario" | wc -l)
     echo "  📊 总计 $total 个 fault（FIS: $fis, CM: $cm, Scenario: $scenario）"
-    if [[ $total -eq 41 ]]; then
-        pass "fault 总数 = 41（与 README 一致）"
+    if [[ $total -eq 42 ]]; then
+        pass "fault 总数 = 42（与 README 一致）"
     else
-        fail "fault 总数 = $total（README 声称 41）"
+        fail "fault 总数 = $total（README 声称 42）"
     fi
 else
     fail "fault-catalog.yaml — YAML 语法错误"
@@ -243,6 +243,255 @@ if grep -qi "internal\|不需要\|内部" "$SKILL_DIR/SKILL_ZH.md"; then
     pass "SKILL_ZH.md 包含 doc/ 排除声明"
 else
     fail "SKILL_ZH.md 缺少 doc/ 排除声明"
+fi
+
+# ─── 16. 新脚本存在性 ──────────────────────────────────────────────
+echo ""
+echo "【16】v1.4.0 新脚本存在性"
+for script in update-dashboard.sh render-dashboard.sh; do
+    if [[ -f "$SKILL_DIR/scripts/$script" ]]; then
+        pass "scripts/$script 存在"
+        if bash -n "$SKILL_DIR/scripts/$script" 2>/dev/null; then
+            pass "scripts/$script 语法正确"
+        else
+            fail "scripts/$script 语法错误"
+        fi
+    else
+        fail "scripts/$script 缺失"
+    fi
+done
+
+# ─── 17. 脚本新参数验证 ─────────────────────────────────────────
+echo ""
+echo "【17】脚本新参数验证"
+if grep -q "\-\-one-shot" "$SKILL_DIR/scripts/experiment-runner.sh"; then
+    pass "experiment-runner.sh 支持 --one-shot"
+else
+    fail "experiment-runner.sh 缺少 --one-shot"
+fi
+if grep -q "\-\-deployment" "$SKILL_DIR/scripts/experiment-runner.sh"; then
+    pass "experiment-runner.sh 支持 --deployment"
+else
+    fail "experiment-runner.sh 缺少 --deployment"
+fi
+if grep -q "\-\-pod-label" "$SKILL_DIR/scripts/experiment-runner.sh"; then
+    pass "experiment-runner.sh 支持 --pod-label"
+else
+    fail "experiment-runner.sh 缺少 --pod-label"
+fi
+
+# ─── 18. monitor.sh CM 模式验证 ─────────────────────────────────
+echo ""
+echo "【18】monitor.sh Chaos Mesh 模式"
+if grep -q "EXPERIMENT_ID.*not set\|metrics-only\|FIS status checks disabled" "$SKILL_DIR/scripts/monitor.sh"; then
+    pass "monitor.sh 支持无 EXPERIMENT_ID 模式"
+else
+    fail "monitor.sh 不支持无 EXPERIMENT_ID 模式"
+fi
+if grep -q 'INTERVAL=.*15' "$SKILL_DIR/scripts/monitor.sh"; then
+    pass "monitor.sh 默认 INTERVAL=15"
+else
+    warn "monitor.sh 默认 INTERVAL 可能不是 15s"
+fi
+
+# ─── 19. log-collector SIGTERM 处理 ─────────────────────────────
+echo ""
+echo "【19】log-collector SIGTERM 处理"
+if grep -q "sleep.*&" "$SKILL_DIR/scripts/log-collector.sh"; then
+    pass "log-collector.sh 使用可中断 sleep 模式"
+else
+    fail "log-collector.sh 未使用可中断 sleep 模式"
+fi
+if grep -q "exit 0" "$SKILL_DIR/scripts/log-collector.sh"; then
+    pass "log-collector.sh cleanup 包含 exit 0"
+else
+    fail "log-collector.sh cleanup 缺少 exit 0"
+fi
+
+# ─── 20. 文档同步检查 ──────────────────────────────────────────
+echo ""
+echo "【20】中英文文档同步检查"
+if grep -q "v1.4.0" "$SKILL_DIR/README.md" && grep -q "v1.4.0" "$SKILL_DIR/README_zh.md"; then
+    pass "README 中英文均包含 v1.4.0 changelog"
+else
+    fail "README 中英文 v1.4.0 changelog 不同步"
+fi
+if grep -q "2026-04-15" "$SKILL_DIR/SKILL_EN.md" && grep -q "2026-04-15" "$SKILL_DIR/SKILL_ZH.md"; then
+    pass "SKILL 中英文 Last sync 均为 2026-04-15"
+else
+    fail "SKILL 中英文 Last sync 不同步"
+fi
+if grep -q "MANDATORY" "$SKILL_DIR/references/workflow-guide_zh.md"; then
+    pass "workflow-guide_zh.md 包含 MANDATORY log-collector"
+else
+    fail "workflow-guide_zh.md 缺少 MANDATORY log-collector"
+fi
+if grep -q "6.0.5" "$SKILL_DIR/references/report-templates_zh.md"; then
+    pass "report-templates_zh.md 包含 §6.0.5 数据完整性检查"
+else
+    fail "report-templates_zh.md 缺少 §6.0.5"
+fi
+if grep -qi "常见错误\|静默失败" "$SKILL_DIR/references/fis-actions_zh.md"; then
+    pass "fis-actions_zh.md 包含 Lambda env var 警告"
+else
+    fail "fis-actions_zh.md 缺少 Lambda env var 警告"
+fi
+
+# ─── 21. 代码→文档：脚本参数 vs README/workflow-guide 覆盖 ────────
+echo ""
+echo "【21】代码→文档：脚本 CLI 参数在文档中有描述"
+
+# Extract all --flags from experiment-runner.sh argument parser (case block only)
+# Filter out jq flags, kubectl flags, and other non-CLI parameters
+runner_flags=$(sed -n '/while.*\$#.*gt.*0/,/esac/p' "$SKILL_DIR/scripts/experiment-runner.sh" \
+    | grep -oP '(?<=--)[a-z][-a-z]*(?=\))' | grep -v '^help$' | sort -u)
+for flag in $runner_flags; do
+    # Check scripts/README.md
+    if grep -qi "\-\-$flag" "$SKILL_DIR/scripts/README.md"; then
+        pass "experiment-runner --$flag → scripts/README.md ✓"
+    else
+        fail "experiment-runner --$flag → scripts/README.md 未描述"
+    fi
+done
+
+# Extract env vars from monitor.sh (user-configurable ones at the top of the file, before first function)
+# Only check the first 30 lines where defaults are declared
+# Exclude internal vars (OUTPUT_FILE, CUSTOM_METRICS_FILE) that aren't user-configurable
+monitor_vars=$(head -30 "$SKILL_DIR/scripts/monitor.sh" | grep -oP '^[A-Z_]+(?=="\$\{)' \
+    | grep -vE '^(OUTPUT_FILE|CUSTOM_METRICS_FILE)$' | sort -u)
+for var in $monitor_vars; do
+    if grep -q "$var" "$SKILL_DIR/scripts/README.md"; then
+        pass "monitor.sh \$$var → scripts/README.md ✓"
+    else
+        fail "monitor.sh \$$var → scripts/README.md 未描述"
+    fi
+done
+
+# Extract --flags from log-collector.sh argument parser (case block only)
+lc_flags=$(sed -n '/while.*\$#.*gt.*0/,/esac/p' "$SKILL_DIR/scripts/log-collector.sh" \
+    | grep -oP '(?<=--)[a-z][-a-z]*(?=\))' | sort -u | grep -v '^help$')
+for flag in $lc_flags; do
+    if grep -qi "\-\-$flag\|$flag" "$SKILL_DIR/scripts/README.md"; then
+        pass "log-collector --$flag → scripts/README.md ✓"
+    else
+        fail "log-collector --$flag → scripts/README.md 未描述"
+    fi
+done
+
+# ─── 22. 文档→代码：README 声称的参数在代码中存在 ─────────────────
+echo ""
+echo "【22】文档→代码：scripts/README.md 声称的参数在代码中存在"
+
+# Extract --flags from scripts/README.md tables (| `--xxx` | pattern)
+readme_runner_flags=$(grep -oP '(?<=\| `--)[a-z][-a-z]*' "$SKILL_DIR/scripts/README.md" | sort -u)
+for flag in $readme_runner_flags; do
+    found=0
+    for script in experiment-runner.sh log-collector.sh monitor.sh; do
+        if grep -q "\-\-$flag" "$SKILL_DIR/scripts/$script" 2>/dev/null; then
+            found=1
+            break
+        fi
+    done
+    # Also check env var style (for monitor.sh vars documented as flags)
+    if [[ $found -eq 0 ]]; then
+        upper_flag=$(echo "$flag" | tr '[:lower:]-' '[:upper:]_')
+        for script in monitor.sh experiment-runner.sh log-collector.sh; do
+            if grep -q "$upper_flag" "$SKILL_DIR/scripts/$script" 2>/dev/null; then
+                found=1
+                break
+            fi
+        done
+    fi
+    if [[ $found -eq 1 ]]; then
+        pass "README --$flag → 代码中存在"
+    else
+        fail "README --$flag → 代码中不存在（幽灵参数）"
+    fi
+done
+
+# ─── 23. 中英文术语对齐 ──────────────────────────────────────────
+echo ""
+echo "【23】中英文关键术语对齐"
+
+# Key technical terms that must appear in both EN and ZH versions
+declare -A doc_pairs=(
+    ["README.md"]="README_zh.md"
+    ["SKILL_EN.md"]="SKILL_ZH.md"
+    ["references/workflow-guide.md"]="references/workflow-guide_zh.md"
+    ["references/fis-actions.md"]="references/fis-actions_zh.md"
+    ["references/report-templates.md"]="references/report-templates_zh.md"
+    ["examples/03-eks-pod-kill.md"]="examples/03-eks-pod-kill_zh.md"
+)
+
+# Technical terms that should be language-neutral (same in both EN and ZH)
+tech_terms=("state.json" "dashboard.md" "one-shot" "EXPERIMENT_ID" "metric-queries.json" "flock" "SIGTERM" "experiment-runner.sh" "monitor.sh" "log-collector.sh" "render-dashboard.sh" "update-dashboard.sh")
+
+for en_file in "${!doc_pairs[@]}"; do
+    zh_file="${doc_pairs[$en_file]}"
+    [[ ! -f "$SKILL_DIR/$en_file" || ! -f "$SKILL_DIR/$zh_file" ]] && continue
+    for term in "${tech_terms[@]}"; do
+        en_has=$(grep -cF "$term" "$SKILL_DIR/$en_file" 2>/dev/null)
+        zh_has=$(grep -cF "$term" "$SKILL_DIR/$zh_file" 2>/dev/null)
+        en_has=${en_has:-0}
+        zh_has=${zh_has:-0}
+        if [[ "$en_has" -gt 0 && "$zh_has" -eq 0 ]]; then
+            fail "$(basename "$en_file") 有 '$term' (${en_has}次) 但 $(basename "$zh_file") 没有"
+        elif [[ "$en_has" -gt 0 && "$zh_has" -gt 0 ]]; then
+            pass "$(basename "$en_file") ↔ $(basename "$zh_file"): '$term' ✓"
+        fi
+        # Don't flag if EN doesn't have it either (not relevant for this file pair)
+    done
+done
+
+# ─── 24. 数字一致性：从代码提取 → 比对所有文档 ───────────────────
+echo ""
+echo "【24】数字一致性"
+
+# Count scripts in scripts/ (excluding README.md)
+actual_scripts=$(find "$SKILL_DIR/scripts" -name "*.sh" -o -name "*.conf" | wc -l)
+echo "  📊 实际脚本数: $actual_scripts"
+
+# Count fault types from YAML
+actual_faults=$(python3 -c "
+import yaml
+with open('$SKILL_DIR/references/fault-catalog.yaml') as f:
+    d = yaml.safe_load(f)
+fis=len(d.get('fis',{})); cm=len(d.get('chaosmesh',{})); sc=len(d.get('fis_scenarios',{}))
+print(f'{fis+cm+sc}|{fis}|{cm}|{sc}')
+" 2>/dev/null || echo "0|0|0|0")
+total_faults=$(echo "$actual_faults" | cut -d'|' -f1)
+fis_count=$(echo "$actual_faults" | cut -d'|' -f2)
+echo "  📊 实际 fault 数: $total_faults (FIS=$fis_count)"
+
+# Check all files that mention fault counts
+for doc in README.md README_zh.md SKILL_EN.md SKILL_ZH.md references/fault-catalog.yaml; do
+    if grep -q "$total_faults" "$SKILL_DIR/$doc" 2>/dev/null; then
+        pass "$(basename "$doc") fault 数量 = $total_faults ✓"
+    else
+        if grep -qP "\d+ [Ff]ault|\d+ 个故障|\d+ 种故障|\d+ faults" "$SKILL_DIR/$doc" 2>/dev/null; then
+            wrong_num=$(grep -oP "\d+(?= [Ff]ault| 个故障| 种故障| faults)" "$SKILL_DIR/$doc" | head -1)
+            fail "$(basename "$doc") fault 数量 = $wrong_num（实际 $total_faults）"
+        fi
+        # No mention = OK (not all files need to state the count)
+    fi
+done
+
+# Count example files
+en_examples=$(ls "$SKILL_DIR/examples/"*.md 2>/dev/null | grep -v "_zh" | wc -l)
+zh_examples=$(ls "$SKILL_DIR/examples/"*_zh.md 2>/dev/null | wc -l)
+if [[ $en_examples -eq $zh_examples ]]; then
+    pass "示例文件中英文数量一致 ($en_examples 对)"
+else
+    fail "示例文件中英文不一致 (EN=$en_examples, ZH=$zh_examples)"
+fi
+
+# Count reference docs
+en_refs=$(ls "$SKILL_DIR/references/"*.md 2>/dev/null | grep -v "_zh" | wc -l)
+zh_refs=$(ls "$SKILL_DIR/references/"*_zh.md 2>/dev/null | wc -l)
+if [[ $en_refs -eq $zh_refs ]]; then
+    pass "参考文档中英文数量一致 ($en_refs 对)"
+else
+    fail "参考文档中英文不一致 (EN=$en_refs, ZH=$zh_refs)"
 fi
 
 # ─── Summary ─────────────────────────────────────────────────────

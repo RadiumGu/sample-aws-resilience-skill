@@ -61,13 +61,27 @@ pod_kill(
 # Check target Pod count
 kubectl get pods -n production -l app=web-frontend
 
-# Inject fault
+# Using experiment-runner.sh (recommended — handles polling + state):
+nohup bash scripts/experiment-runner.sh --mode chaosmesh \
+    --manifest examples/pod-kill-web-frontend.yaml --namespace production \
+    --one-shot --pod-label "app=web-frontend" --deployment "web-frontend" \
+    --state-exp-id "EXP-001" --output-dir output/ &
+RUNNER_PID=$!
+
+# Monitor (omit EXPERIMENT_ID for Chaos Mesh):
+export NAMESPACE="production" REGION="ap-northeast-1" DURATION=300
+nohup bash scripts/monitor.sh &
+
+# Log collector (MANDATORY for all experiments):
+nohup bash scripts/log-collector.sh --namespace production \
+    --services "web-frontend" --mode live --duration 300 --output-dir output/ &
+
+wait $RUNNER_PID
+# Exit code: 0=completed (one-shot), 1=failed, 2=timeout
+
+# Manual alternative (without scripts):
 kubectl apply -f examples/pod-kill-web-frontend.yaml
-
-# Observe Pod recreation
 kubectl get pods -n production -l app=web-frontend -w
-
-# Cleanup (auto-cleans on expiry, or manual)
 kubectl delete -f examples/pod-kill-web-frontend.yaml
 ```
 

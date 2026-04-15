@@ -8,7 +8,7 @@
 #
 # Adding new fault types: append to the appropriate section below. No need to modify SKILL.md.
 #
-# === Quick Index (41 faults) ===
+# === Quick Index (42 faults) ===
 # Chaos Mesh (14):
 #   Compute:  pod_kill, pod_failure, container_kill
 #   Network:  network_delay, network_loss, network_partition, network_bandwidth
@@ -434,8 +434,35 @@ fis:
       delayMilliseconds: "500"
       invocationPercentage: "10"
     prerequisites:
-      - "FIS IAM Role with lambda:* permissions (FIS extension)"
+      - "FIS IAM Role with lambda:GetFunction, lambda:UpdateFunctionConfiguration permissions"
       - "Lambda function ARN"
+      - "⚠️ Target Lambda MUST have FIS Extension Layer installed"
+      - "⚠️ Target Lambda MUST have env var: AWS_FIS_CONFIGURATION_LOCATION"
+    setup_commands: |
+      # Step 1: Add FIS Extension Layer to Lambda
+      # Find the correct ARN for your region at:
+      # https://docs.aws.amazon.com/fis/latest/userguide/fis-actions-reference.html#lambda-actions
+      LAYER_ARN="arn:aws:lambda:<REGION>:420165488524:layer:AWS-FIS-Extension-Arn:<VERSION>"
+      aws lambda update-function-configuration \
+        --function-name <FUNCTION_NAME> \
+        --layers "$LAYER_ARN" \
+        --environment "Variables={AWS_FIS_CONFIGURATION_LOCATION=arn:aws:fis:<REGION>:<ACCOUNT>:experiment/<EXP_ID>,EXISTING_VAR=value}" \
+        --region <REGION>
+      # Step 2: Verify
+      aws lambda get-function-configuration --function-name <FUNCTION_NAME> \
+        --query '{Layers:Layers[].Arn, EnvVars:Environment.Variables}' --region <REGION>
+      #
+      # ⚠️ AWS_FIS_CONFIGURATION_LOCATION format:
+      #   ✅ Correct: arn:aws:fis:<REGION>:<ACCOUNT>:experiment/<EXP_ID>
+      #   ❌ Wrong:   s3://bucket-name/path  (FIS rejects with "invalid value" error)
+      #
+      # Chicken-and-egg: You need the experiment ID before starting, but the ID is
+      # assigned at start time. Workflow:
+      #   1. Create FIS template (get template ID)
+      #   2. Start experiment (get experiment ID)
+      #   3. Update Lambda env var with experiment ARN
+      #   4. FIS will inject on next Lambda invocation
+      # Alternatively, use a wildcard config if supported by your FIS version.
     recommended_for: [serverless]
 
   - type: lambda_error
@@ -450,8 +477,12 @@ fis:
       duration: "PT2M"
       invocationPercentage: "10"
     prerequisites:
-      - "FIS IAM Role with lambda:* permissions (FIS extension)"
+      - "FIS IAM Role with lambda:GetFunction, lambda:UpdateFunctionConfiguration permissions"
       - "Lambda function ARN"
+      - "⚠️ Target Lambda MUST have FIS Extension Layer installed"
+      - "⚠️ Target Lambda MUST have env var: AWS_FIS_CONFIGURATION_LOCATION"
+    setup_commands: |
+      # Same as lambda_delay — see lambda_delay.setup_commands
     recommended_for: [serverless]
 
   # -- Network --
@@ -548,16 +579,29 @@ fis:
       - "S3 CRR configured"
     recommended_for: [multi-region]
 
-  # -- FIS API Errors --
+  # -- FIS API Errors (ec2 and kinesis ONLY) --
   - type: api_internal_error
     backend: fis
     category: api
     fis_action_id: "aws:fis:inject-api-internal-error"
-    description: "Inject 500 errors into AWS API requests"
+    description: "Inject 500 errors into AWS API calls made by the target IAM role"
+    important_notes:
+      - "⚠️ ONLY supports service=ec2 and service=kinesis (AWS doc confirmed)"
+      - "Does NOT work with: DynamoDB, S3, RDS, Lambda, ELB, or any other service"
+      - "For other services, use their dedicated FIS Actions instead"
+      - "Targets IAM role, NOT a specific service endpoint"
+      - "'operations' param can filter to specific API actions (e.g., DescribeInstances)"
+    supported_services: [ec2, kinesis]
+    NOT_supported:
+      - dynamodb  # Use aws:dynamodb:global-table-pause-replication
+      - lambda    # Use aws:lambda:invocation-add-delay / invocation-error
+      - s3        # Use aws:s3:bucket-pause-replication
+      - rds       # Use aws:rds:failover-db-cluster / reboot-db-instances
+      - ebs       # Use aws:ebs:pause-volume-io
     default_params:
       duration: "PT5M"
       percentage: "100"
-      service: "ec2"
+      service: "ec2"            # MUST be ec2 or kinesis
       operations: "DescribeInstances"
     safe_first_run_params:
       duration: "PT2M"
@@ -565,19 +609,32 @@ fis:
       service: "ec2"
       operations: "DescribeInstances"
     prerequisites:
-      - "FIS IAM Role (basic)"
-      - "Target IAM Role ARN"
+      - "Target IAM Role ARN required"
+      - "fis:InjectApiInternalError permission"
     recommended_for: [all]
 
   - type: api_throttle
     backend: fis
     category: api
     fis_action_id: "aws:fis:inject-api-throttle-error"
-    description: "Inject throttling errors into AWS API requests"
+    description: "Inject throttling errors into AWS API calls made by the target IAM role"
+    important_notes:
+      - "⚠️ ONLY supports service=ec2 and service=kinesis (AWS doc confirmed)"
+      - "Does NOT work with: DynamoDB, S3, RDS, Lambda, ELB, or any other service"
+      - "For other services, use their dedicated FIS Actions instead"
+      - "Targets IAM role, NOT a specific service endpoint"
+      - "'operations' param can filter to specific API actions (e.g., RunInstances)"
+    supported_services: [ec2, kinesis]
+    NOT_supported:
+      - dynamodb  # Use aws:dynamodb:global-table-pause-replication
+      - lambda    # Use aws:lambda:invocation-add-delay / invocation-error
+      - s3        # Use aws:s3:bucket-pause-replication
+      - rds       # Use aws:rds:failover-db-cluster / reboot-db-instances
+      - ebs       # Use aws:ebs:pause-volume-io
     default_params:
       duration: "PT5M"
       percentage: "100"
-      service: "ec2"
+      service: "ec2"            # MUST be ec2 or kinesis
       operations: "DescribeInstances"
     safe_first_run_params:
       duration: "PT2M"
@@ -585,8 +642,37 @@ fis:
       service: "ec2"
       operations: "DescribeInstances"
     prerequisites:
-      - "FIS IAM Role (basic)"
-      - "Target IAM Role ARN"
+      - "Target IAM Role ARN required"
+      - "fis:InjectApiThrottleError permission"
+    recommended_for: [all]
+
+  - type: api_unavailable_error
+    backend: fis
+    category: api
+    fis_action_id: "aws:fis:inject-api-unavailable-error"
+    description: "Inject Unavailable errors into AWS API calls made by the target IAM role"
+    important_notes:
+      - "⚠️ ONLY supports service=ec2 and service=kinesis (AWS doc confirmed)"
+    supported_services: [ec2, kinesis]
+    NOT_supported:
+      - dynamodb  # Use aws:dynamodb:global-table-pause-replication
+      - lambda    # Use aws:lambda:invocation-add-delay / invocation-error
+      - s3        # Use aws:s3:bucket-pause-replication
+      - rds       # Use aws:rds:failover-db-cluster / reboot-db-instances
+      - ebs       # Use aws:ebs:pause-volume-io
+    default_params:
+      duration: "PT5M"
+      percentage: "100"
+      service: "ec2"            # MUST be ec2 or kinesis
+      operations: "DescribeInstances"
+    safe_first_run_params:
+      duration: "PT2M"
+      percentage: "10"
+      service: "ec2"
+      operations: "DescribeInstances"
+    prerequisites:
+      - "Target IAM Role ARN required"
+      - "fis:InjectApiUnavailableError permission"
     recommended_for: [all]
 
   # -- ECS --

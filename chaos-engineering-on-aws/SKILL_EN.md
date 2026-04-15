@@ -1,6 +1,6 @@
 # Chaos Engineering on AWS
 
-> Last sync: 2026-04-14
+> Last sync: 2026-04-15
 
 ## Role Definition
 
@@ -20,32 +20,36 @@ Input completeness check and missing data handling → [references/workflow-guid
 
 Full setup guide with examples: [MCP_SETUP_GUIDE.md](MCP_SETUP_GUIDE.md)
 
-| Server | Package | Required |
-|--------|---------|----------|
-| aws-api-mcp-server | `awslabs.aws-api-mcp-server` | Yes |
-| cloudwatch-mcp-server | `awslabs.cloudwatch-mcp-server` | Yes |
-| eks-mcp-server | `awslabs.eks-mcp-server` | If EKS |
-| chaosmesh-mcp | [RadiumGu/Chaosmesh-MCP](https://github.com/RadiumGu/Chaosmesh-MCP) | If Chaos Mesh installed |
+| Server | Package | Required | Notes |
+|--------|---------|----------|-------|
+| aws-api-mcp-server | `awslabs.aws-api-mcp-server` | Yes | ⚠️ Must set `ALLOW_WRITE_OPERATIONS=true` |
+| cloudwatch-mcp-server | `awslabs.cloudwatch-mcp-server` | Yes | |
+| eks-mcp-server | `awslabs.eks-mcp-server` | If EKS | |
+| chaosmesh-mcp | [RadiumGu/Chaosmesh-MCP](https://github.com/RadiumGu/Chaosmesh-MCP) | If Chaos Mesh installed | |
 
 Falls back to AWS CLI (`aws fis`, `aws cloudwatch`, `kubectl`) when MCP unavailable.
 
 ## Six-Step Workflow
+
+> **On startup**: Always check `output/state.json` first. If previous progress exists, offer to resume. See workflow-guide.md § Recovery After Interruption.
+
+> **Three-layer status**: (1) `state.json` v2 — machine-readable state with `flock` concurrent writes, (2) `dashboard.md` — auto-generated each monitor cycle, (3) `render-dashboard.sh` — terminal ASCII dashboard. See [scripts/README.md](scripts/README.md) for schema.
 
 > Detailed instructions for each step: [references/workflow-guide.md](references/workflow-guide.md)
 > State persistence (file-as-state checkpoints): [references/workflow-guide.md § State Persistence](references/workflow-guide.md#state-persistence)
 
 | Step | Name | Key Action | Output |
 |------|------|------------|--------|
-| 1 | Define Targets | Filter experimentable risks by score, confirm scope | `output/checkpoints/step1-scope.json` |
+| 1 | Define Targets | Filter experimentable risks by score, confirm scope, detect Chaos Mesh | `output/checkpoints/step1-scope.json` |
 | 2 | Select Resources | Validate ARNs, calculate blast radius, label roles | `output/checkpoints/step2-assessment.json` |
 | 3 | Design Experiment | Hypothesis + tool selection + config generation | `output/checkpoints/step3-experiment.json` + `output/templates/` |
 | 4 | Pre-flight | Checklist: IAM, alarms, blast radius, team readiness | `output/checkpoints/step4-validation.json` |
-| 5 | Execute | Background scripts: runner + monitor + log-collector | `output/checkpoints/step5-experiment.json` + metrics/logs |
+| 5 | Execute | Background scripts: runner + monitor + log-collector | `output/checkpoints/step5-experiment.json` + metrics/logs + `dashboard.md` |
 | 6 | Report | Verify results from AWS API, analyze, generate report | `output/step6-report.md` + `output/step6-report.html` |
 
 ### Key Decision Points (read before each step)
 
-**Step 3 — Tool Selection**: Consult [references/fault-catalog.yaml](references/fault-catalog.yaml) (41 fault types). Selection logic:
+**Step 3 — Tool Selection**: Consult [references/fault-catalog.yaml](references/fault-catalog.yaml) (42 fault types). Selection logic:
 - AZ/Region compound faults → FIS Scenario Library → [references/scenario-library.md](references/scenario-library.md)
 - AWS infrastructure → FIS single action → [references/fis-actions.md](references/fis-actions.md)
 - K8s Pod/container → Chaos Mesh (preferred over FIS pod actions) → [references/chaosmesh-crds.md](references/chaosmesh-crds.md)
@@ -55,9 +59,9 @@ Falls back to AWS CLI (`aws fis`, `aws cloudwatch`, `kubectl`) when MCP unavaila
 **Step 3 — Required output**: Must generate `output/monitoring/metric-queries.json` for Step 5 monitoring.
 
 **Step 5 — Execution**: Do NOT poll in agent loop. Use background scripts:
-- [scripts/experiment-runner.sh](scripts/experiment-runner.sh) — injection + polling + timeout
-- [scripts/monitor.sh](scripts/monitor.sh) — CloudWatch metric collection
-- [scripts/log-collector.sh](scripts/log-collector.sh) — pod log collection + 5-category classification
+- [scripts/experiment-runner.sh](scripts/experiment-runner.sh) — injection + polling + timeout. For pod-kill: use `--one-shot --pod-label "app=X" --deployment "deploy-name"` to complete on AllInjected + Pods Ready (instead of waiting for timeout)
+- [scripts/monitor.sh](scripts/monitor.sh) — CloudWatch metric collection. Two modes: **FIS mode** (set `EXPERIMENT_ID`, auto-stops when FIS completes) or **Chaos Mesh mode** (omit `EXPERIMENT_ID`, set `DURATION` for timed stop). Default `INTERVAL=15` seconds
+- [scripts/log-collector.sh](scripts/log-collector.sh) — ⚠️ **MANDATORY** for all experiments (FIS and CM). Pod log collection + 5-category classification. Responds to SIGTERM immediately (writes summary before exit)
 
 Script parameters: [scripts/README.md](scripts/README.md)
 
@@ -66,7 +70,7 @@ Script parameters: [scripts/README.md](scripts/README.md)
 ## Safety Principles
 
 1. **Minimum blast radius**: Never exceed constraint limits
-2. **Mandatory stop conditions**: Every FIS experiment binds a CloudWatch Alarm
+2. **Mandatory stop conditions**: Every FIS experiment binds a CloudWatch Alarm. Stop condition alarms **must** use `--treat-missing-data notBreaching` to prevent false triggers during experiment startup
 3. **Progressive**: Staging → Production, single fault → cascading
 4. **Reversible**: All experiments require rollback plans
 5. **Human confirmation**: Production requires double confirmation

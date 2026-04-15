@@ -210,19 +210,20 @@ See [examples/petsite-assessment.md](examples/petsite-assessment.md) for a sampl
 ```
 eks-resilience-checker/
 ├── SKILL.md                            # Entry point (language detection → routing)
-├── SKILL_EN.md                         # English instructions
-├── SKILL_ZH.md                         # Chinese instructions
-├── README.md                           # This file (English)
-├── README_zh.md                        # Chinese version
-├── doc/
-│   └── prd.md                          # Product requirements
-├── references/
-│   ├── EKS-Resiliency-Checkpoints.md   # 26-check detailed descriptions
-│   ├── check-commands.md               # kubectl/aws commands per check
-│   ├── remediation-templates.md        # Fix command templates
-│   └── fail-to-experiment-mapping.md   # FAIL → experiment mapping table
+├── SKILL_EN.md / SKILL_ZH.md          # Instructions (bilingual, ~226/221 lines)
+├── README.md / README_zh.md            # Documentation (bilingual)
+├── references/                         # Reference docs (loaded on demand by Agent)
+│   ├── EKS-Resiliency-Checkpoints.md / _zh.md  # 26-check descriptions & rationale
+│   ├── check-commands.md / _zh.md      # kubectl/aws commands per check + PASS/FAIL criteria
+│   ├── eks-resiliency-checks-mcp.md / _zh.md   # MCP-based check execution (alternative)
+│   ├── remediation-templates.md / _zh.md        # Fix command templates with YAML examples
+│   ├── fail-to-experiment-mapping.md / _zh.md   # FAIL → chaos experiment mapping table
+│   └── eks-auth-setup.md / _zh.md      # EKS authentication setup guide (2 methods)
 ├── scripts/
-│   └── assess.sh                       # Assessment main script (standalone)
-└── examples/
-    └── petsite-assessment.md           # PetSite cluster assessment example
+│   ├── assess.sh                       # Automated 26-check assessment script (standalone)
+│   └── README.md                       # Script usage guide
+├── examples/
+│   └── petsite-assessment.md           # PetSite cluster assessment example
+└── doc/                                # Internal development docs (NOT loaded by Agent)
+    └── prd.md                          # Product requirements
 ```

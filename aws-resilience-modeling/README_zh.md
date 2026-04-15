@@ -143,29 +143,27 @@ Claude: [自动加载 aws-resilience-modeling skill]
 ```
 aws-resilience-modeling/
 ├── SKILL.md                                    # 语言路由器（加载 EN/ZH）
-├── SKILL_EN.md                                 # Skill 指令（英文）
-├── SKILL_ZH.md                                 # Skill 指令（中文）
-├── README.md                                   # Readme（英文）
-├── README_zh.md                                # 本文件（中文）
-├── references/
-│   ├── resilience-framework.md                 # 韧性分析详细参考框架（英文）
-│   ├── resilience-framework_zh.md              # 韧性分析详细参考框架（中文）
-│   ├── common-risks-reference.md               # AWS 常见服务风险手册（英文）
-│   ├── common-risks-reference_zh.md            # AWS 常见服务风险手册（中文）
-│   ├── assessment-output-spec.md               # 混沌工程输入规范（英文）
-│   ├── assessment-output-spec_zh.md            # 混沌工程输入规范（中文）
-│   ├── report-generation.md                    # 报告生成流程和代码（英文）
-│   ├── report-generation_zh.md                 # 报告生成流程和代码（中文）
-│   ├── HTML-TEMPLATE-USAGE.md                  # HTML 模板使用指南（英文）
-│   ├── HTML-TEMPLATE-USAGE_zh.md               # HTML 模板使用指南（中文）
-│   ├── MCP_SETUP_GUIDE.md                      # MCP 服务器配置指南（英文）
-│   └── MCP_SETUP_GUIDE_zh.md                   # MCP 服务器配置指南（中文）
+├── SKILL_EN.md / SKILL_ZH.md                  # Skill 指令（双语，各 ~153 行）
+├── README.md / README_zh.md                    # 说明文档（双语）
+├── references/                                 # 参考文档（Agent 按需加载）
+│   ├── analysis-tasks.md / _zh.md              # 8 个分析任务详细指令
+│   ├── resilience-framework.md / _zh.md        # 框架索引和参考资料映射
+│   ├── resilience-analysis-core.md / _zh.md    # 9 维度评分方法论
+│   ├── waf-reliability-pillar.md / _zh.md      # WAF 可靠性支柱 + DR 成本基线
+│   ├── common-risks-reference.md / _zh.md      # 50+ 常见 AWS 风险模式
+│   ├── assessment-output-spec.md / _zh.md      # Chaos Skill 桥接：8 段输出规格
+│   ├── compliance-mapping.md / _zh.md          # SOC2/ISO 27001/NIST CSF 框架映射
+│   ├── cloud-design-patterns.md / _zh.md       # 云韧性设计模式
+│   ├── chaos-engineering-methodology.md / _zh.md # 混沌工程方法论参考
+│   ├── observability-standards.md / _zh.md     # AWS 可观测性最佳实践
+│   ├── report-generation.md / _zh.md           # 报告生成工作流
+│   ├── HTML-TEMPLATE-USAGE.md / _zh.md         # HTML 模板使用指南
+│   └── MCP_SETUP_GUIDE.md / _zh.md             # MCP 服务器配置指南
 ├── scripts/
 │   └── generate-html-report.py                 # Python 报告生成器
 └── assets/
     ├── html-report-template.html               # HTML 交互式报告模板
-    ├── example-report-template.md              # Markdown 报告示例（英文）
-    └── example-report-template_zh.md           # Markdown 报告示例（中文）
+    └── example-report-template.md / _zh.md     # Markdown 报告示例
 ```
 
 ## 分析框架

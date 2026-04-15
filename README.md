@@ -170,63 +170,86 @@ Download individual skill folders from the [GitHub repository](https://github.co
 
 ```
 .
-├── aws-rma-assessment/                # Resilience Maturity Assessment
-│   ├── SKILL.md                       # Skill definition
-│   ├── README.md                      # Skill documentation
-│   └── references/                    # Reference documents
-│       ├── questions-data.json        # 80 assessment questions (JSON)
-│       ├── questions-priority.md      # Priority classification (P0-P3)
-│       ├── question-groups.md         # Batch Q&A grouping strategy
-│       └── report-template.md         # Report generation template
+├── aws-rma-assessment/                # Skill 1: Resilience Maturity Assessment
+│   ├── SKILL.md / SKILL_EN.md / SKILL_ZH.md  # Skill definition (bilingual)
+│   ├── README.md / README_zh.md       # Skill documentation
+│   ├── references/                    # Reference documents (loaded on demand)
+│   │   ├── questions-index.json       # Question index — load first
+│   │   ├── questions-group-{1-10}.json # 82 questions split by domain (load per group)
+│   │   ├── questions-priority.md      # Priority classification (P0-P3)
+│   │   ├── question-groups.md         # Batch Q&A grouping strategy
+│   │   ├── assessment-workflow.md     # Step-by-step workflow details
+│   │   ├── auto-analysis-rules.md     # Auto-inference & confidence rules
+│   │   ├── scoring-guide.md           # Scoring formulas & domain ratings
+│   │   └── report-template.md         # Report generation template
+│   ├── scripts/
+│   │   └── merge-questions.py         # Question data merge utility
+│   └── assets/
+│       ├── html-report-template.html  # Interactive HTML report template
+│       └── example-report-snippet.md  # Example report output
 │
-├── aws-resilience-modeling/               # Technical Resilience Assessment
-│   ├── SKILL.md                       # Skill definition
-│   ├── README.md                      # Skill documentation
-│   ├── references/                    # Reference documents
-│   │   ├── resilience-framework.md    # AWS best practices reference
+├── aws-resilience-modeling/           # Skill 2: Technical Resilience Assessment
+│   ├── SKILL.md / SKILL_EN.md / SKILL_ZH.md  # Skill definition (bilingual)
+│   ├── README.md / README_zh.md       # Skill documentation
+│   ├── references/                    # Reference documents (loaded on demand)
+│   │   ├── analysis-tasks.md          # 8 analysis task details
+│   │   ├── resilience-framework.md    # Framework index & references map
+│   │   ├── resilience-analysis-core.md # 9-dimension scoring methodology
+│   │   ├── waf-reliability-pillar.md  # WAF Reliability Pillar + DR cost baselines
 │   │   ├── common-risks-reference.md  # 50+ common AWS risk patterns
+│   │   ├── assessment-output-spec.md  # Chaos skill bridge: 8-section output spec
+│   │   ├── compliance-mapping.md      # SOC2/ISO/NIST framework mapping
 │   │   ├── report-generation.md       # Report generation guide
 │   │   ├── MCP_SETUP_GUIDE.md        # MCP server configuration
-│   │   └── ...
+│   │   └── ...                        # (EN/ZH pairs for each file)
 │   ├── scripts/
 │   │   └── generate-html-report.py    # HTML report generation script
 │   └── assets/
 │       ├── html-report-template.html  # Interactive HTML report template
 │       └── example-report-template.md # Markdown report example
 │
-├── eks-resilience-checker/             # EKS Resilience Best Practice Checks
-│   ├── SKILL.md                       # Skill definition
-│   ├── SKILL_EN.md                    # English skill instructions
-│   ├── SKILL_ZH.md                    # Chinese skill instructions
-│   ├── README.md                      # Skill documentation
+├── eks-resilience-checker/            # Skill 3: EKS Resilience Best Practice Checks
+│   ├── SKILL.md / SKILL_EN.md / SKILL_ZH.md  # Skill definition (bilingual)
+│   ├── README.md / README_zh.md       # Skill documentation
+│   ├── references/                    # Reference documents (loaded on demand)
+│   │   ├── EKS-Resiliency-Checkpoints.md  # 26 check descriptions & rationale
+│   │   ├── check-commands.md          # Exact kubectl/aws commands per check
+│   │   ├── eks-resiliency-checks-mcp.md   # MCP-based check execution
+│   │   ├── remediation-templates.md   # Fix command templates with YAML examples
+│   │   ├── fail-to-experiment-mapping.md  # FAIL → chaos experiment mapping
+│   │   └── eks-auth-setup.md          # EKS authentication setup guide
 │   ├── scripts/
 │   │   └── assess.sh                  # Automated 26-check assessment script
-│   ├── references/                    # Reference documents
-│   │   ├── EKS-Resiliency-Checkpoints.md  # 26 check definitions
-│   │   ├── check-commands.md          # Exact kubectl/aws commands per check
-│   │   └── remediation-templates.md   # Fix templates with YAML examples
 │   └── examples/
 │       └── petsite-assessment.md      # Example assessment report
 │
-├── chaos-engineering-on-aws/          # Chaos Engineering Experiments
-│   ├── SKILL.md                       # Skill definition (6-step workflow)
+├── chaos-engineering-on-aws/          # Skill 4: Chaos Engineering Experiments
+│   ├── SKILL.md / SKILL_EN.md / SKILL_ZH.md  # Skill definition (bilingual)
 │   ├── MCP_SETUP_GUIDE.md             # MCP server configuration
 │   ├── references/                    # Progressive-disclosure reference docs
+│   │   ├── workflow-guide.md          # Detailed 6-step workflow instructions
+│   │   ├── fault-catalog.yaml         # Unified fault type catalog (3-tier)
 │   │   ├── fis-actions.md             # AWS FIS actions reference
 │   │   ├── chaosmesh-crds.md          # Chaos Mesh CRD reference
+│   │   ├── scenario-library.md        # FIS Scenario Library templates
+│   │   ├── templates/                 # Parameterized FIS multi-action templates
 │   │   ├── report-templates.md        # Report templates (MD + HTML)
+│   │   ├── emergency-procedures.md    # Emergency rollback procedures
 │   │   └── gameday.md                 # Game Day execution guide
-│   ├── examples/                      # Experiment scenario examples
-│   │   ├── 01-ec2-terminate.md        # EC2 instance termination
-│   │   ├── 02-rds-failover.md         # RDS Aurora failover
-│   │   ├── 03-eks-pod-kill.md         # EKS Pod kill (Chaos Mesh)
-│   │   └── 04-az-network-disrupt.md   # AZ network isolation
+│   ├── examples/                      # Experiment scenario examples (01-05)
 │   ├── scripts/
-│   │   ├── monitor.sh                 # CloudWatch metric collection script
+│   │   ├── experiment-runner.sh       # FIS/ChaosMesh experiment executor
+│   │   ├── monitor.sh                 # CloudWatch metric collection
 │   │   ├── log-collector.sh           # Pod log collection + error classification
-│   │   └── setup-prerequisites.sh     # FIS role, Chaos Mesh, resource tagging setup
-│   └── doc/                           # Design documents (PRD, decisions)
+│   │   └── setup-prerequisites.sh     # FIS role, Chaos Mesh, resource tagging
+│   └── validate-skill.sh             # Static validation (105 checks)
 │
+├── quickstart/                        # Quick start guide with sample app
+│   ├── README.md / README_zh.md
+│   ├── sample-app/                    # Sample K8s deployments for testing
+│   └── expected-output/               # Reference assessment output
+│
+├── .kiro/skills/                      # Kiro skill registration (auto-synced)
 ├── README.md                          # This file
 └── README_zh.md                       # Chinese version
 ```

@@ -18,6 +18,12 @@ bash scripts/experiment-runner.sh --mode <fis|chaosmesh> [options]
 | `--timeout` | No | `600` | Max seconds before auto-stop |
 | `--poll-interval` | No | `15` | Seconds between status checks |
 | `--output-dir` | No | `output/` | Output directory for state files |
+| `--state-exp-id` | No | — | Experiment ID in state.json (e.g., EXP-001) for dashboard/recovery updates |
+| `--experiment-id` | No | — | Existing FIS experiment ID (monitor-only mode: skip creation, just poll status) |
+| `--quiet` | No | false | Minimal output (for background use) |
+| `--one-shot` | No | false | One-shot injection mode (pod-kill): complete when AllInjected=True + pods Ready |
+| `--pod-label` | No | — | Pod label selector for `--one-shot` completion check (e.g., `app=petsite`) |
+| `--deployment` | No | — | Deployment name for `--one-shot` replica count (e.g., `petsite-deployment`). If omitted, auto-discovers via selector match |
 
 **Exit codes**: 0=completed, 1=failed, 2=timeout
 
@@ -29,14 +35,31 @@ bash scripts/experiment-runner.sh --mode <fis|chaosmesh> [options]
 
 ## monitor.sh
 
-Collects CloudWatch metrics during experiments.
+Collects CloudWatch metrics during experiments. Works in two modes:
 
+**FIS mode** (with EXPERIMENT_ID — auto-stops when FIS completes):
 ```bash
 export EXPERIMENT_ID="EXP..."
 export REGION="ap-northeast-1"
 export NAMESPACE="petadoptions"
 nohup bash scripts/monitor.sh &
 ```
+
+**Chaos Mesh mode** (without EXPERIMENT_ID — stops via SIGTERM or DURATION):
+```bash
+export REGION="ap-northeast-1"
+export NAMESPACE="petadoptions"
+export DURATION=300  # stop after 5 minutes
+nohup bash scripts/monitor.sh &
+```
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `EXPERIMENT_ID` | No | — | FIS experiment ID. Omit for Chaos Mesh mode |
+| `NAMESPACE` | Yes | — | CloudWatch metric namespace |
+| `REGION` | Yes | — | AWS region |
+| `INTERVAL` | No | `15` | Collection interval in seconds |
+| `DURATION` | No | `0` | Max duration in seconds (0=unlimited) |
 
 **Requires**: `output/monitoring/metric-queries.json` (generated in Step 3). If missing, writes a warning to JSONL and continues without metrics.
 
@@ -74,3 +97,80 @@ bash scripts/setup-prerequisites.sh --region <region> --cluster <name>
 ```
 
 Creates: FIS IAM Role, basic CloudWatch alarms, validates permissions.
+
+## update-dashboard.sh
+
+Generates `output/dashboard.md` from state files. Called automatically by `monitor.sh`
+every collection cycle. Can also be run manually:
+
+```bash
+OUTPUT_DIR=./output bash scripts/update-dashboard.sh
+```
+
+**Output**: `output/dashboard.md` — human-readable Markdown dashboard
+
+## render-dashboard.sh
+
+Renders a colored ASCII dashboard in the terminal. Best used with `watch`:
+
+```bash
+# Real-time terminal dashboard (refreshes every 5 seconds)
+watch -n 5 -c bash scripts/render-dashboard.sh
+
+# Or manual refresh
+bash scripts/render-dashboard.sh
+```
+
+> Note: `watch -c` enables color output. On macOS, install `watch` via `brew install watch`.
+
+## state.json v2 Schema
+
+All scripts share `output/state.json` for coordination. `experiment-runner.sh` uses `flock` for concurrent write safety.
+
+```json
+{
+  "version": 2,
+  "created_at": "2026-04-15T11:30:00Z",
+  "updated_at": "2026-04-15T11:45:00Z",
+  "workflow": {
+    "current_step": 5,
+    "current_phase": "experiment_running",
+    "status": "in_progress"
+  },
+  "steps": {
+    "1": { "status": "completed", "started_at": "...", "completed_at": "..." },
+    "5": { "status": "in_progress", "started_at": "..." }
+  },
+  "experiments": [
+    {
+      "id": "EXP-001",
+      "name": "EKS Pod Kill",
+      "status": "completed",
+      "result": "PASSED",
+      "tool": "chaosmesh",
+      "elapsed_seconds": 5,
+      "recovery_time_seconds": 6
+    }
+  ],
+  "background_pids": {
+    "runner": 12345,
+    "monitor": 12346,
+    "log_collector": 12347
+  },
+  "recovery_info": {
+    "can_resume": false
+  }
+}
+```
+
+### Data Flow
+
+```
+experiment-runner.sh ──flock──► state.json ◄──cp snapshot── update-dashboard.sh → dashboard.md
+                                    │                              ▲
+                                    │                              │
+monitor.sh ─────────────────────────┘──── calls ───────────────────┘
+                                                    (every INTERVAL)
+
+render-dashboard.sh ──cp snapshot──► state.json (read-only, terminal output)
+```

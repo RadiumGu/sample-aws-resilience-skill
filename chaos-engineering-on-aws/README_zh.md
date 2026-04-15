@@ -65,18 +65,18 @@ git clone https://github.com/aws-samples/sample-aws-resilience-skill.git
 | 2 | 选择目标资源 | `output/step2-assessment.json` |
 | 3 | 定义假设和实验 | `output/step3-experiment.json` |
 | 4 | 实验准备就绪检查 | `output/step4-validation.json` |
-| 5 | 运行受控实验 | `output/step5-experiment.json` + `step5-metrics.jsonl` |
+| 5 | 运行受控实验 | `output/step5-experiment.json` + `step5-metrics.jsonl` + `step5-logs.jsonl` + `state.json` + `dashboard.md` |
 | 6 | 学习与报告 | `output/step6-report.md` + `step6-report.html` |
 
 ## 故障注入工具选择
 
 > 📋 完整结构化目录：[references/fault-catalog.yaml](references/fault-catalog.yaml)
 
-### 故障目录概览：41 个故障动作
+### 故障目录概览：42 个故障动作
 
 | 后端 | 数量 | 覆盖范围 |
 |------|------|---------|
-| **AWS FIS** | 23 | EC2、RDS、Lambda、EBS、DynamoDB、S3、API Gateway、ECS、Network |
+| **AWS FIS** | 24 | EC2、RDS、Lambda、EBS、DynamoDB、S3、API Gateway、ECS、Network |
 | **Chaos Mesh** | 14 | Pod 生命周期、网络、HTTP、CPU/内存压力、IO、DNS |
 | **FIS Scenario** | 4 | AZ 断电、AZ 应用减速、跨 AZ 流量、跨 Region 连通性 |
 
@@ -126,6 +126,53 @@ K8s Pod / 容器层  →  Chaos Mesh（推荐）
 - **组合实验**：FIS 原生多 Action 模板 + `startAfter` 编排（并行、串行、定时延迟）
 - **混合后端编排**：FIS + Chaos Mesh 同时注入，定义明确的熔断顺序
 - **参数化模板**：`{{placeholder}}` 格式的可复用模板，适用于标准化场景
+- **三层状态管理**：`state.json` v2 状态机 + `dashboard.md` Markdown 看板 + 终端 ASCII 看板
+- **会话中断恢复**：Agent 会话中断后可通过 `state.json` 检查点自动恢复
+
+## 状态管理与可观测性
+
+本 Skill 为长时间运行的实验提供三层状态架构：
+
+### 第一层：`output/state.json`（v2）
+
+机器可读的状态文件，由 `experiment-runner.sh` 通过 `flock` 保证并发写入安全。
+
+```json
+{
+  "version": 2,
+  "workflow": { "current_step": 5, "status": "in_progress" },
+  "experiments": [
+    { "id": "EXP-001", "status": "completed", "elapsed_seconds": 74, "result": "PASSED" }
+  ],
+  "background_pids": { "runner": 12345, "monitor": 12346, "log_collector": 12347 }
+}
+```
+
+Agent 启动时检查 `state.json`：
+- **不存在** → 全新开始
+- **存在且 `status: in_progress`** → 恢复模式：检查 PID、查询 FIS/CM 状态、恢复或重新开始
+
+### 第二层：`output/dashboard.md`
+
+Markdown 看板，由 `monitor.sh` 每个采集周期自动生成（通过 `update-dashboard.sh`）。可在 IDE Markdown 预览中实时查看进度。
+
+### 第三层：终端 ASCII 看板
+
+彩色 ASCII 终端看板：
+
+```bash
+watch -n 5 -c bash scripts/render-dashboard.sh
+```
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║  🔬  混沌工程看板                                            ║
+╠══════════════════════════════════════════════════════════════╣
+║  进度: [████████████████████] 100%  Step 6/6  (completed)
+║  EXP-001 EKS Pod Kill   ✅ done  74s   PASS
+║  Monitor: ✅ Active  samples=20
+╚══════════════════════════════════════════════════════════════╝
+```
 
 ## 安全原则
 
@@ -158,43 +205,66 @@ K8s Pod / 容器层  →  Chaos Mesh（推荐）
 ```
 chaos-engineering-on-aws/
 ├── SKILL.md                    # Agent Skill 定义（语言路由）
-├── SKILL_EN.md / SKILL_ZH.md  # 完整指令（英文/中文）
-├── README.md                   # 英文版
-├── README_zh.md                # 本文件（中文版）
-├── MCP_SETUP_GUIDE.md          # MCP Server 配置指南
-├── examples/                   # 实验场景示例
-├── references/
-│   ├── fault-catalog.yaml      # 统一故障类型注册表：41 个动作（23 FIS + 14 CM + 4 Scenario）
-│   ├── workflow-guide_zh.md    # 6 步流程详细指令
-│   ├── scenario-library_zh.md  # FIS Scenario Library JSON skeleton 与要求
+├── SKILL_EN.md / SKILL_ZH.md  # 完整指令（双语，各 ~97 行）
+├── README.md / README_zh.md    # 说明文档（双语）
+├── MCP_SETUP_GUIDE.md / _zh.md # MCP Server 配置指南
+├── references/                 # 渐进式加载参考文档（Agent 按需加载）
+│   ├── workflow-guide.md / _zh.md  # 6 步流程详细指令
+│   ├── fault-catalog.yaml      # 统一故障类型注册表：42 个动作（24 FIS + 14 CM + 4 Scenario）
+│   ├── scenario-library.md / _zh.md  # FIS Scenario Library JSON skeleton 与要求
 │   ├── templates/              # 参数化 FIS 多 Action 模板（{{placeholder}} 格式）
 │   │   ├── az-power-interruption.json       # AZ 断电（4 action，并行）
 │   │   ├── cascade-db-to-app.json           # DB 级联故障（3 action，串行 + 延迟）
 │   │   └── progressive-network-degradation.json  # 渐进式退化（6 action，3 波次）
-│   ├── prerequisites-checklist_zh.md  # 按架构模式分类的前置条件
-│   ├── emergency-procedures_zh.md     # 应急停止程序（三级升级方案）
-│   ├── fis-actions_zh.md       # FIS actions 参考
-│   ├── chaosmesh-crds_zh.md    # Chaos Mesh CRD 参考
-│   ├── report-templates_zh.md  # 报告生成模板
-│   └── gameday_zh.md           # Game Day 演练指南
+│   ├── prerequisites-checklist.md / _zh.md  # 按架构模式分类的前置条件
+│   ├── emergency-procedures.md / _zh.md     # 应急停止程序（三级升级方案）
+│   ├── fis-actions.md / _zh.md # FIS actions 参考
+│   ├── chaosmesh-crds.md / _zh.md  # Chaos Mesh CRD 参考
+│   ├── report-templates.md / _zh.md # 报告生成模板
+│   └── gameday.md / _zh.md     # Game Day 演练指南
+├── examples/                   # 实验场景示例（01-05，中英文对）
 ├── scripts/
-│   ├── README.md               # 脚本使用指南（参数、退出码）
-│   ├── experiment-runner.sh    # 实验执行（FIS + Chaos Mesh）
-│   ├── log-collector.sh        # Pod 日志采集 + 错误分类
-│   ├── monitor.sh              # CloudWatch 指标采集
-│   └── setup-prerequisites.sh  # 可选的前置环境准备
-├── doc/                        # 内部开发文档（Agent 不加载）
-│   ├── prd.md                  # 产品需求
-│   ├── decisions.md            # 架构决策
-│   └── ...                     # 其他内部文档
-├── scripts/
-│   ├── monitor.sh              # 监控脚本模板
-│   ├── log-collector.sh        # Pod 日志收集 + 错误分类
-│   └── setup-prerequisites.sh  # 可选的前置环境准备脚本
-└── e2e-tests/                  # 端到端测试
+│   ├── README.md               # 脚本使用指南（参数、退出码、示例）
+│   ├── experiment-runner.sh    # 实验执行（FIS + Chaos Mesh，--one-shot 支持 pod-kill）
+│   ├── log-collector.sh        # Pod 日志采集 + 5 类错误自动分类
+│   ├── monitor.sh              # CloudWatch 指标采集（FIS 模式 + Chaos Mesh 模式）
+│   ├── update-dashboard.sh     # 自动生成 output/dashboard.md（monitor.sh 每周期调用）
+│   ├── render-dashboard.sh     # 彩色 ASCII 终端看板（配合 `watch -n 5 -c` 使用）
+│   ├── setup-prerequisites.sh  # 可选的前置环境准备
+│   └── custom-metrics-sample.conf  # 自定义指标配置示例
+└── validate-skill.sh          # 静态验证脚本（105 项检查）
 ```
 
 ## 近期变更
+
+### v1.4.0 — 2026-04-15
+
+**三层状态管理（P0）**
+- `scripts/experiment-runner.sh` — `state.json` v2 schema：工作流追踪、实验数组、后台 PID、`flock` 并发写入保护
+- `scripts/update-dashboard.sh` — 新增：从 state.json 自动生成 `output/dashboard.md`（monitor.sh 每周期调用）
+- `scripts/render-dashboard.sh` — 新增：彩色 ASCII 终端看板（`watch -n 5 -c bash scripts/render-dashboard.sh`）
+- `references/workflow-guide.md` — 会话中断恢复流程（检查 state.json → PID → FIS/CM 状态 → 恢复或重启）
+
+**Monitor 与 Runner 改进（P0）**
+- `scripts/monitor.sh` — `EXPERIMENT_ID` 改为可选；Chaos Mesh 实验不传即可（metrics-only 模式 + `DURATION` 超时）
+- `scripts/monitor.sh` — 默认 `INTERVAL` 从 30s 改为 15s，提升数据密度
+- `scripts/experiment-runner.sh` — 新增 `--one-shot` + `--pod-label` + `--deployment` 参数；pod-kill 实验在 AllInjected=True + Pods Ready 时自动完成，不再等到超时
+- `scripts/experiment-runner.sh` — 新增 `--state-exp-id` 参数，在所有终态（completed/failed/timeout/aborted）自动更新 state.json
+
+**日志采集器改进（P1）**
+- `scripts/log-collector.sh` — `cleanup()` 先写 summary 再 kill 子进程（防止 SIGTERM 时数据丢失）
+- `scripts/log-collector.sh` — 可中断 sleep（`sleep N & wait $!`），SIGTERM 立即响应
+- `references/workflow-guide.md` — log-collector 启动标记为 MANDATORY（FIS 和 CM 实验均强制启动）
+
+**安全与文档（P1）**
+- `scripts/monitor.sh` — 修复 `OUTPUT_DIR` 变量未初始化导致 monitor 崩溃
+- `references/fault-catalog.yaml` — `aws:fis:inject-api-throttle-error` 限定仅支持 ec2/kinesis（不含 dynamodb/s3 等）
+- `references/fault-catalog.yaml` — Lambda FIS actions：`AWS_FIS_CONFIGURATION_LOCATION` 格式说明（必须是实验 ARN，非 S3 路径）
+- `references/fis-actions.md` — Lambda 环境变量格式常见错误警告
+- `references/workflow-guide.md` — Verdict Decision Tree：4 级数据完整性 → 判定映射（PASSED/FAILED、OBSERVED、BLOCKED）
+- `references/report-templates.md` — 报告 §6.0.5：Data Completeness Check 在 verdict 前必须执行
+- `SKILL_EN.md` / `SKILL_ZH.md` — Stop condition alarm 必须设置 `--treat-missing-data notBreaching`
+- `scripts/update-dashboard.sh` / `scripts/render-dashboard.sh` — 临时文件使用 PID（`$$`）避免并发冲突
 
 ### v1.3.0 — 2026-04-14
 

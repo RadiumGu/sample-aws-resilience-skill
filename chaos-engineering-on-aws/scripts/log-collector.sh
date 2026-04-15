@@ -192,13 +192,36 @@ BG_PIDS=()
 cleanup() {
     echo "" >&2
     echo "[log-collector] Shutting down..." >&2
+    
+    # Step 1: Write summary FIRST (use whatever data we have now).
+    # This ensures summary is written even if subsequent kill/wait hangs.
+    write_summary
+    
+    # Step 2: Stop background kubectl processes with timeout
     for pid in "${BG_PIDS[@]}"; do
         kill "$pid" 2>/dev/null || true
     done
-    wait 2>/dev/null || true
-    write_summary
+    local wait_start
+    wait_start=$(date +%s)
+    while true; do
+        local any_alive=false
+        for pid in "${BG_PIDS[@]}"; do
+            kill -0 "$pid" 2>/dev/null && any_alive=true && break
+        done
+        [[ "$any_alive" == "false" ]] && break
+        if (( $(date +%s) - wait_start > 5 )); then
+            echo "[log-collector] Force killing remaining processes" >&2
+            for pid in "${BG_PIDS[@]}"; do
+                kill -9 "$pid" 2>/dev/null || true
+            done
+            break
+        fi
+        sleep 0.5
+    done
+    
     rm -f "$INTERNAL_FILE"
     echo "[log-collector] Finished at $(date -u +%FT%TZ)" >&2
+    exit 0
 }
 
 trap cleanup SIGTERM SIGINT
@@ -377,9 +400,11 @@ run_live() {
     done
 
     # Wait for duration, printing status every SUMMARY_INTERVAL seconds
+    # Use "sleep N & wait $!" pattern so SIGTERM can interrupt the sleep
     local elapsed=0
     while (( elapsed < DURATION )); do
-        sleep "$SUMMARY_INTERVAL"
+        sleep "$SUMMARY_INTERVAL" &
+        wait $! || true  # interrupted by SIGTERM → trap fires immediately
         elapsed=$(( $(date +%s) - START_EPOCH ))
         print_status "$elapsed"
     done

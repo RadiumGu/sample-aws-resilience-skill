@@ -38,6 +38,7 @@ aws cloudwatch put-metric-alarm \
   --threshold 100 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 3 \
+  --treat-missing-data notBreaching \
   --alarm-actions "arn:aws:sns:{region}:{account}:chaos-alerts"
 ```
 

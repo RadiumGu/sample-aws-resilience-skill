@@ -1,5 +1,18 @@
 # Report Templates
 
+> **Data Completeness Rules**: Before filling any template, check data availability per the
+> Verdict Decision Tree in workflow-guide.md § 6.0.5. Fields marked 🔴 are mandatory —
+> if data is unavailable, use the "Data Missing" replacement text shown below.
+
+## Verdict Logic Reference
+
+| Data Available | Verdict |
+|---------------|---------|
+| Complete metrics + baseline | PASSED ✅ or FAILED ❌ (based on hypothesis) |
+| Metrics but no baseline | OBSERVED (baseline unknown) ⚠️ |
+| No metrics data | OBSERVED (not validated) ⚠️ |
+| No experiment result file | BLOCKED (no data) ❌ — do not generate report |
+
 ## Single Experiment Report
 
 ```markdown
@@ -10,7 +23,7 @@
 - Risk ID: {risk_id} (from Assessment 2.4)
 - Execution time: {timestamp}
 - Environment: {env}
-- Result: {PASSED ✅ / FAILED ❌ / ABORTED ⚠️}
+- Result: {PASSED ✅ / FAILED ❌ / ABORTED ⚠️ / OBSERVED ⚠️}  🔴 MANDATORY — use Verdict Decision Tree
 
 ## Input Source
 - Assessment report: {filename}
@@ -18,13 +31,16 @@
 - Assessment suggested injection method: {suggestion}
 - Actual injection method: {actual}
 
-## Steady-State Hypothesis vs. Actual Performance
+## Steady-State Hypothesis vs. Actual Performance  🔴 MANDATORY
 
 | Metric | Baseline | Hypothesis Threshold | During Experiment | After Recovery | Verdict |
 |------|--------|---------|-----------|---------|------|
 | Success rate | 99.98% | >= 99.5% | {value} | {value} | ✅/❌ |
 | P99 latency | 120ms | <= 500ms | {value} | {value} | ✅/❌ |
 | Recovery time | N/A | <= {RTO}s | {value} | N/A | ✅/❌ |
+
+> **If metrics data missing**: Replace all `{value}` with "No data" (not "N/A (idle)").
+> Add header: `⚠️ LIMITED DATA: No CloudWatch metrics were collected during this experiment.`
 
 ## Timeline
 - T+0s: Fault injection started

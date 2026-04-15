@@ -169,63 +169,86 @@ git clone https://github.com/aws-samples/sample-aws-resilience-skill.git
 
 ```
 .
-├── aws-rma-assessment/                # 韧性成熟度评估
-│   ├── SKILL.md                       # Skill 定义
-│   ├── README.md                      # Skill 说明文档
-│   └── references/                    # 参考文档
-│       ├── questions-data.json        # 80 个评估问题（JSON）
-│       ├── questions-priority.md      # 优先级分类（P0-P3）
-│       ├── question-groups.md         # 批量问答分组策略
-│       └── report-template.md         # 报告生成模板
+├── aws-rma-assessment/                # Skill 1: 韧性成熟度评估
+│   ├── SKILL.md / SKILL_EN.md / SKILL_ZH.md  # Skill 定义（双语）
+│   ├── README.md / README_zh.md       # Skill 说明文档
+│   ├── references/                    # 参考文档（按需加载）
+│   │   ├── questions-index.json       # 问题索引 — 先加载此文件
+│   │   ├── questions-group-{1-10}.json # 82 个问题按域拆分（按组加载）
+│   │   ├── questions-priority.md      # 优先级分类（P0-P3）
+│   │   ├── question-groups.md         # 批量问答分组策略
+│   │   ├── assessment-workflow.md     # 分步工作流详情
+│   │   ├── auto-analysis-rules.md     # 自动推断和置信度规则
+│   │   ├── scoring-guide.md           # 评分公式和域评级
+│   │   └── report-template.md         # 报告生成模板
+│   ├── scripts/
+│   │   └── merge-questions.py         # 问题数据合并工具
+│   └── assets/
+│       ├── html-report-template.html  # 交互式 HTML 报告模板
+│       └── example-report-snippet.md  # 示例报告输出
 │
-├── aws-resilience-modeling/               # 技术韧性评估
-│   ├── SKILL.md                       # Skill 定义
-│   ├── README.md                      # Skill 说明文档
-│   ├── references/                    # 参考文档
-│   │   ├── resilience-framework.md    # AWS 最佳实践参考
-│   │   ├── common-risks-reference.md  # 50+ 个常见 AWS 风险模式
+├── aws-resilience-modeling/           # Skill 2: 技术韧性评估
+│   ├── SKILL.md / SKILL_EN.md / SKILL_ZH.md  # Skill 定义（双语）
+│   ├── README.md / README_zh.md       # Skill 说明文档
+│   ├── references/                    # 参考文档（按需加载）
+│   │   ├── analysis-tasks.md          # 8 个分析任务详情
+│   │   ├── resilience-framework.md    # 框架索引和参考资料映射
+│   │   ├── resilience-analysis-core.md # 9 维度评分方法论
+│   │   ├── waf-reliability-pillar.md  # WAF 可靠性支柱 + DR 成本基线
+│   │   ├── common-risks-reference.md  # 50+ 常见 AWS 风险模式
+│   │   ├── assessment-output-spec.md  # Chaos Skill 桥接：8 段输出规格
+│   │   ├── compliance-mapping.md      # SOC2/ISO/NIST 框架映射
 │   │   ├── report-generation.md       # 报告生成指南
 │   │   ├── MCP_SETUP_GUIDE.md        # MCP 服务器配置
-│   │   └── ...
+│   │   └── ...                        # （每个文件有 EN/ZH 对）
 │   ├── scripts/
 │   │   └── generate-html-report.py    # HTML 报告生成脚本
 │   └── assets/
 │       ├── html-report-template.html  # 交互式 HTML 报告模板
 │       └── example-report-template.md # Markdown 报告示例
 │
-├── eks-resilience-checker/             # EKS 韧性最佳实践检查
-│   ├── SKILL.md                       # Skill 定义
-│   ├── SKILL_EN.md                    # 英文 Skill 指令
-│   ├── SKILL_ZH.md                    # 中文 Skill 指令
-│   ├── README.md                      # Skill 说明文档
+├── eks-resilience-checker/            # Skill 3: EKS 韧性最佳实践检查
+│   ├── SKILL.md / SKILL_EN.md / SKILL_ZH.md  # Skill 定义（双语）
+│   ├── README.md / README_zh.md       # Skill 说明文档
+│   ├── references/                    # 参考文档（按需加载）
+│   │   ├── EKS-Resiliency-Checkpoints.md  # 26 项检查描述和原理
+│   │   ├── check-commands.md          # 每项检查的 kubectl/aws 命令
+│   │   ├── eks-resiliency-checks-mcp.md   # MCP 方式执行检查
+│   │   ├── remediation-templates.md   # 修复命令模板（含 YAML 示例）
+│   │   ├── fail-to-experiment-mapping.md  # FAIL → 混沌实验映射
+│   │   └── eks-auth-setup.md          # EKS 认证配置指南
 │   ├── scripts/
 │   │   └── assess.sh                  # 自动化 26 项检查评估脚本
-│   ├── references/                    # 参考文档
-│   │   ├── EKS-Resiliency-Checkpoints.md  # 26 项检查定义
-│   │   ├── check-commands.md          # 每项检查的 kubectl/aws 命令
-│   │   └── remediation-templates.md   # 修复模板（含 YAML 示例）
 │   └── examples/
 │       └── petsite-assessment.md      # 评估报告示例
 │
-├── chaos-engineering-on-aws/          # 混沌工程实验
-│   ├── SKILL.md                       # Skill 定义（六步工作流）
+├── chaos-engineering-on-aws/          # Skill 4: 混沌工程实验
+│   ├── SKILL.md / SKILL_EN.md / SKILL_ZH.md  # Skill 定义（双语）
 │   ├── MCP_SETUP_GUIDE.md             # MCP 服务器配置
 │   ├── references/                    # 渐进式加载参考文档
+│   │   ├── workflow-guide.md          # 详细 6 步工作流指令
+│   │   ├── fault-catalog.yaml         # 统一故障类型目录（3 层）
 │   │   ├── fis-actions.md             # AWS FIS Actions 参考
 │   │   ├── chaosmesh-crds.md          # Chaos Mesh CRD 参考
+│   │   ├── scenario-library.md        # FIS Scenario Library 模板
+│   │   ├── templates/                 # 参数化 FIS 多 Action 模板
 │   │   ├── report-templates.md        # 报告模板（MD + HTML）
+│   │   ├── emergency-procedures.md    # 紧急回滚流程
 │   │   └── gameday.md                 # Game Day 执行指南
-│   ├── examples/                      # 实验场景示例
-│   │   ├── 01-ec2-terminate.md        # EC2 实例终止
-│   │   ├── 02-rds-failover.md         # RDS Aurora 故障转移
-│   │   ├── 03-eks-pod-kill.md         # EKS Pod Kill（Chaos Mesh）
-│   │   └── 04-az-network-disrupt.md   # AZ 网络隔离
+│   ├── examples/                      # 实验场景示例（01-05）
 │   ├── scripts/
-│   │   ├── monitor.sh                 # CloudWatch 指标采集脚本
+│   │   ├── experiment-runner.sh       # FIS/ChaosMesh 实验执行器
+│   │   ├── monitor.sh                 # CloudWatch 指标采集
 │   │   ├── log-collector.sh           # Pod 日志采集 + 错误分类
 │   │   └── setup-prerequisites.sh     # FIS 角色、Chaos Mesh、资源标签配置
-│   └── doc/                           # 设计文档（PRD、决议）
+│   └── validate-skill.sh             # 静态验证（105 项检查）
 │
+├── quickstart/                        # 快速入门（含示例应用）
+│   ├── README.md / README_zh.md
+│   ├── sample-app/                    # 测试用 K8s 部署文件
+│   └── expected-output/               # 参考评估输出
+│
+├── .kiro/skills/                      # Kiro Skill 注册（自动同步）
 ├── README.md                          # 本文件（英文）
 └── README_zh.md                       # 中文版
 ```
