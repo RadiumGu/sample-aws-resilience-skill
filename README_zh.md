@@ -38,6 +38,7 @@
 | 2 | **aws-resilience-modeling** | Stage 2: 设计与实施 | AWS 账户访问或架构文档 | 风险清单 + 资源扫描 + 缓解策略 |
 | 3 | **chaos-engineering-on-aws** | Stage 3: 评估与测试 | Skill #2 的评估报告 | 实验结果 + 验证报告 + 更新后的韧性评分 |
 | 4 | **eks-resilience-checker** | Stage 3: 评估与测试 | EKS 集群 kubectl 访问权限 | 26 项合规报告 + 实验建议 |
+| 5 | **aws-well-architected-review** | 跨切面 | AWS 账户只读访问权限 | 6 大支柱 WA 评审报告 + 风险组合 + 改进路线图 |
 
 ### 推荐使用流程
 
@@ -114,6 +115,22 @@
 - 可移植：自动检测集群名称、区域和 Kubernetes 版本
 
 **调用方式：** 在对话中提及 "EKS 韧性检查"、"集群评估" 或 "cluster resilience check"。
+
+### 5. Well-Architected 自动化评审 (`aws-well-architected-review`)
+
+**功能：** 自动化 AWS Well-Architected Framework 评审，通过 49 项只读编程式检查覆盖全部 6 大 WAF 支柱。确认凭证后全自动执行，输出 Markdown + HTML 报告。
+
+**适用场景：** 全面架构评审——识别安全、可靠性、性能、成本和可持续性方面的差距。
+
+**核心特性：**
+- 49 项编程式检查覆盖 6 大 WAF 支柱（Security-First 顺序）
+- 严格只读：仅 Describe/Get/List API 调用，拒绝有写权限的凭证
+- HRI/MRI/LRI 风险分级 + 优先级矩阵
+- 4 阶段改进路线图（立即 → 长期）
+- 双格式报告：Markdown + HTML，含支柱计分卡
+- 可选同步到 AWS WA Tool 控制台
+
+**调用方式：** 在对话中提及 "架构评审"、"Well-Architected 评估"、"安全评估" 或 "WA review"。
 
 ## 故障注入工具选择
 

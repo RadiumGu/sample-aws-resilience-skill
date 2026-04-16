@@ -39,6 +39,7 @@ These skills map to the [AWS Resilience Lifecycle Framework](https://docs.aws.am
 | 2 | **aws-resilience-modeling** | Stage 2: Design & Implement | AWS account access or architecture docs | Risk inventory + resource scan + mitigation strategies |
 | 3 | **chaos-engineering-on-aws** | Stage 3: Evaluate & Test | Assessment report from Skill #2 | Experiment results + validation report + updated resilience score |
 | 4 | **eks-resilience-checker** | Stage 3: Evaluate & Test | EKS cluster kubectl access | 26-check compliance report + experiment recommendations |
+| 5 | **aws-well-architected-review** | Cross-cutting | AWS account with read-only access | 6-pillar WA review report + risk portfolio + improvement roadmap |
 
 ### Recommended Workflow
 
@@ -115,6 +116,22 @@ These skills map to the [AWS Resilience Lifecycle Framework](https://docs.aws.am
 - Portable: auto-detects cluster name, region, and Kubernetes version
 
 **Invoke:** Mention "EKS resilience check", "cluster assessment", or "集群韧性评估" in conversation.
+
+### 5. Well-Architected Review (`aws-well-architected-review`)
+
+**What it does:** Automated AWS Well-Architected Framework Review across all 6 pillars using 49 read-only programmatic checks. Runs in autopilot mode — confirm credentials, then fully automated assessment with Markdown + HTML reports.
+
+**Best for:** Comprehensive architecture review — identifying security, reliability, performance, cost, and sustainability gaps across your entire AWS environment.
+
+**Key features:**
+- 49 programmatic checks across 6 WAF pillars (Security-First order)
+- Strict read-only: only Describe/Get/List API calls, blocks write-capable credentials
+- HRI/MRI/LRI risk classification with priority matrix
+- 4-phase improvement roadmap (immediate → long-term)
+- Dual report output: Markdown + HTML with pillar scorecards
+- Optional sync to AWS WA Tool console
+
+**Invoke:** Mention "WA review", "Well-Architected assessment", "architecture review", or "架构评审" in conversation.
 
 ## Fault Injection Tool Selection
 
